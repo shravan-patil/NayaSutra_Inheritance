@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: nyaysutra-frontend
+    buildCommand: npm run build
+    startCommand: npm run preview
+    envVars:
+      - key: VITE_SUPABASE_URL
+        scope: all
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        scope: all
+      - key: VITE_API_BASE_URL
+        scope: all
+      - key: VITE_APP_NAME
+        value: "NyaySutra Vault"
+    rootDir: frontend
+    plan: free
+    region: oregon

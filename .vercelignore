@@ -1,0 +1,10 @@
+supabase/
+scripts/
+.github/
+.git/
+.env
+.env.local
+.env.*.local
+tsconfig.json.bak
+node_modules/
+*.md

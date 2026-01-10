@@ -1,0 +1,18 @@
+{
+  "name": "nyaysutra-backend",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "supabase start",
+    "functions:deploy": "supabase functions deploy",
+    "migrations:up": "supabase db push",
+    "build": "echo 'Backend uses Supabase managed functions'"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
