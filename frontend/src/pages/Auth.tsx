@@ -102,25 +102,18 @@ const Auth = () => {
 
   // Check for existing custom session
   useEffect(() => {
-    const checkExistingAuth = () => {
-      const token = localStorage.getItem("auth_token");
-      const userId = localStorage.getItem("user_id");
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      // You can add logic here to verify if token is expired
+      const savedRole = localStorage.getItem("user_role") || "public_party";
       
-      if (token && userId) {
-        const savedRole = localStorage.getItem("user_role") || "public_party";
-        
-        // Add a small delay to ensure state is properly set
-        setTimeout(() => {
-          if (savedRole === "police") {
-            navigate("/police/dashboard", { replace: true });
-          } else {
-            navigate("/dashboard", { replace: true });
-          }
-        }, 100);
+      // Determine dashboard path
+      if (savedRole === "police") {
+        navigate("/police/dashboard", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
       }
-    };
-    
-    checkExistingAuth();
+    }
   }, [navigate]);
 
   // Auto-connect wallet if previously connected in MetaMask
@@ -154,10 +147,11 @@ const Auth = () => {
     try {
       console.log("Starting Strict Auth for:", walletAddress);
 
-      // STEP 1: Fetch Profile (Strict Check)
+      // STEP 1: Fetch Nonce (Strict Check)
+      // We do NOT "maybeSingle" here because if they are missing, it's an error.
       const { data: profileData, error: fetchError } = await supabase
         .from("profiles")
-        .select("id, role_category, full_name")
+        .select("nonce, id, role_category, status")
         .eq("wallet_address", walletAddress)
         .maybeSingle();
 
@@ -165,13 +159,21 @@ const Auth = () => {
         throw new Error("Database error: " + fetchError.message);
       }
 
+      // --- THE CHANGE IS HERE ---
       // If no profile found -> REJECT IMMEDIATELY
       if (!profileData) {
-        throw new Error("Access Denied: Your wallet is not whitelisted. Please contact administrator.");
+        throw new Error("Access Denied: Your wallet is not whitelisted. Please contact the administrator.");
       }
 
-      // STEP 2: Sign a simple message
-      const message = `Welcome to NyaySutra.\n\nSign this message to verify your identity.\n\nTimestamp: ${Date.now()}`;
+      // Security Check: Block suspended users
+      if (profileData.status === 'suspended' || profileData.status === 'pending') {
+         throw new Error("Access Denied: Your account is " + profileData.status);
+      }
+
+      if (!profileData.nonce) throw new Error("Security Error: Nonce missing.");
+
+      // STEP 2: Sign the Nonce
+      const message = `Welcome to NyaySutra.\n\nNonce: ${profileData.nonce}\n\nSign this message to verify your identity.`;
       
       const signature = await signMessage(message);
 
@@ -181,15 +183,18 @@ const Auth = () => {
         return;
       }
 
-      // STEP 3: Create a simple auth token
-      const authResult = {
-        token: btoa(JSON.stringify({
-          wallet: walletAddress,
-          id: profileData.id,
-          role: profileData.role_category,
-          timestamp: Date.now()
-        }))
-      };
+      // STEP 3: Verify Signature on Backend
+      const { data: authResult, error: authError } = await supabase
+        .rpc('verify_user_login', { 
+           _wallet: walletAddress,
+           _signature: signature 
+        });
+
+      if (authError) throw new Error(authError.message);
+
+      if (!authResult || !authResult.token) {
+        throw new Error("Verification failed: No token returned.");
+      }
 
       // STEP 4: Login Success
       localStorage.setItem("auth_token", authResult.token);
@@ -198,35 +203,25 @@ const Auth = () => {
 
       toast.success("Login successful!");
       
-      // Reset auth initiated state before redirect
-      setAuthInitiated(false);
-      
-      // Call redirect function
       checkRoleAndRedirect(profileData.role_category);
 
     } catch (err: any) {
       console.error("Auth Error:", err);
-      // Show a clear error message to user
+      // Show a clear error message to the user
       toast.error(err?.message ?? "Authentication failed");
-      setAuthInitiated(false);
-    } finally {
-      // Ensure auth initiated is always reset
       setAuthInitiated(false);
     }
   };
 
   const checkRoleAndRedirect = (userRole: string) => {
-    // Add a small delay to ensure all state updates are complete
-    setTimeout(() => {
-      // Define logic for where different roles go
-      if (userRole === "police" || userRole === "police_officer") {
-        navigate("/police/dashboard", { replace: true });
-      } else if (userRole === "judge") {
+    // Define logic for where different roles go
+    if (userRole === "police" || userRole === "police_officer") {
+      navigate("/police/dashboard", { replace: true });
+    } else if (userRole === "judge") {
         navigate("/dashboard", { replace: true }); // Or /judge/dashboard
-      } else {
-        navigate("/dashboard", { replace: true });
-      }
-    }, 200);
+    } else {
+      navigate("/dashboard", { replace: true });
+    }
   };
 
   const handleConnectWallet = () => {

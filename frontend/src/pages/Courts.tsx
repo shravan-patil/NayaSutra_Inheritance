@@ -5,7 +5,6 @@ import { Building2, MapPin, ChevronRight, LogOut, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useWeb3 } from '@/contexts/Web3Context';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -19,15 +18,8 @@ type CourtInfo = {
 const Courts = () => {
   const navigate = useNavigate();
   const { signOut, profile } = useAuth();
-  const { disconnect } = useWeb3();
   const [courts, setCourts] = useState<CourtInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  const handleSignOut = () => {
-    disconnect();
-    signOut();
-    setTimeout(() => navigate('/', { replace: true }), 100);
-  };
 
   const fetchCourts = async () => {
     // Get unique court names from cases table
@@ -106,15 +98,11 @@ const Courts = () => {
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-foreground">{profile?.full_name}</p>
-                <p className="text-xs text-muted-foreground">{profile?.wallet_address || 'No email'}</p>
+                <p className="text-xs text-muted-foreground">{profile?.email}</p>
               </div>
               {getRoleBadge()}
             </div>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleSignOut}
-            >
+            <Button variant="ghost" size="icon" onClick={signOut}>
               <LogOut className="w-5 h-5" />
             </Button>
           </div>

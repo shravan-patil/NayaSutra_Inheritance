@@ -1,19 +1,17 @@
 import { motion } from "framer-motion";
 import { Shield, Wallet, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useWeb3 } from "@/contexts/Web3Context";
 
 export const Navbar = () => {
   const { isAuthenticated, signOut, isLoading } = useAuth();
-  const { disconnect } = useWeb3();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = () => {
-    disconnect();
     signOut();
-    setTimeout(() => navigate('/', { replace: true }), 100);
+    navigate('/', { state: { from: location.pathname } });
   };
 
   if (isLoading) {

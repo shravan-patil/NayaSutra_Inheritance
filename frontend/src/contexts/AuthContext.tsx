@@ -152,14 +152,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setSession(null);
     setProfile(null);
-    
-    // 4. Force a storage event to notify other tabs
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'auth_token',
-      oldValue: localStorage.getItem('auth_token'),
-      newValue: null
-    }));
-    
     toast.success("Signed out successfully");
   };
 
