@@ -93,22 +93,50 @@ export const createSessionEndNotifications = async (
         user_id: recipientId!,
         title: `Session Confirmation Required - ${notificationData.caseNumber}`,
         message: `Court session for case ${notificationData.caseNumber} has ended. Please confirm to proceed with blockchain recording.`,
-        is_read: false
+        is_read: false,
+        case_id: notificationData.caseId,
+        session_id: notificationData.sessionId,
+        requires_confirmation: true,
+        metadata: {
+          caseNumber: notificationData.caseNumber,
+          endedAt: notificationData.endedAt,
+          notes: notificationData.notes
+        }
       };
 
-      return await supabase
+      console.log('📝 Creating notification record:', notificationRecord);
+
+      const result = await supabase
         .from('notifications')
         .insert(notificationRecord)
         .select()
         .single();
+
+      console.log('📊 Notification creation result for recipient', recipientId, ':', result);
+      return result;
     });
 
     // 4. Execute all notification creations
     const results = await Promise.allSettled(notificationPromises);
     
-    // 5. Check results
+    // 5. Check results and log detailed errors
+    console.log('📋 All notification results:', results);
+    
     const successful = results.filter(result => result.status === 'fulfilled').length;
     const failed = results.filter(result => result.status === 'rejected').length;
+
+    // Log detailed error information
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`❌ Notification ${index} failed:`, result.reason);
+      } else if (result.status === 'fulfilled') {
+        if (result.value.error) {
+          console.error(`❌ Notification ${index} database error:`, result.value.error);
+        } else {
+          console.log(`✅ Notification ${index} created successfully:`, result.value.data);
+        }
+      }
+    });
 
     console.log(`📨 Notifications created: ${successful} successful, ${failed} failed`);
 

@@ -353,10 +353,10 @@ const CaseDetails = () => {
           
           // Send notifications to all participants
           const notificationSuccess = await createSessionEndNotifications({
-            caseId: id!,
+            caseId: caseData.id,
             sessionId: courtSession.activeSession.id,
             judgeId: profile.id,
-            caseNumber: caseData.case_number || 'Unknown',
+            caseNumber: caseData.case_number,
             endedAt: new Date().toISOString(),
             notes: sessionNotes || undefined
           });
@@ -372,8 +372,8 @@ const CaseDetails = () => {
               created_at: new Date().toISOString(),
               requires_confirmation: true,
               user_id: profile.id,
+              case_id: caseData.id,
               metadata: {
-                caseId: id!,
                 sessionId: courtSession.activeSession.id,
                 caseNumber: caseData.case_number,
                 endedAt: new Date().toISOString(),
