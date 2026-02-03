@@ -1,20 +1,22 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, Upload, X } from "lucide-react";
+import { FileText, Upload, X, Shield } from "lucide-react";
 import { InvestigationFile } from "@/types/case";
 import { uploadInvestigationFile } from "@/services/policeService";
+import { addSupplementaryReport } from "@/utils/BlockChain_Interface/police";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 interface Props {
   firId: string;
+  firNumber?: string; // Add FIR number for blockchain
   onClose: () => void;
   onAdded: (file: InvestigationFile) => void;
   category?: "chargesheet" | "evidence";
 }
 
 const AddSupplementModal = (
-  { firId, onClose, onAdded, category = "evidence" }: Props,
+  { firId, firNumber, onClose, onAdded, category = "evidence" }: Props,
 ) => {
   const isChargesheetOnly = category === "chargesheet";
   const [file, setFile] = useState<File | null>(null);
@@ -23,6 +25,7 @@ const AddSupplementModal = (
   );
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadToBlockchain, setUploadToBlockchain] = useState(false);
 
   const chargesheetOptions = ["Supplementary Chargesheet"];
   const evidenceOptions = [
@@ -42,6 +45,19 @@ const AddSupplementModal = (
       isChargesheetOnly ? "Supplementary Chargesheet" : "Forensic Report",
     );
     setNotes("");
+    setUploadToBlockchain(false);
+  };
+
+  // Mock IPFS CID function - replace with actual IPFS upload later
+  const getMockIpfsCid = (): string => {
+    return `Qm${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+  };
+
+  // Mock content hash function - replace with actual content hashing later
+  const getContentHash = (_content: string): string => {
+    // Generate proper 64-character hex string for bytes32 (32 bytes)
+    const hex = Math.random().toString(16).substring(2);
+    return `0x${hex.padEnd(64, '0').substring(0, 64)}`;
   };
 
   const handleClose = () => {
@@ -58,8 +74,20 @@ const AddSupplementModal = (
 
     setLoading(true);
     try {
+      // Step 1: If it's a chargesheet, upload to blockchain first
+      if (isChargesheetOnly && firNumber) {
+        // Mock IPFS upload - replace with actual IPFS implementation
+        const ipfsCid = getMockIpfsCid();
+        const contentHash = getContentHash(`${file.name}-${type}-${notes}`);
+        
+        // Add to blockchain
+        await addSupplementaryReport(firNumber, ipfsCid, contentHash);
+      }
+      
+      // Step 2: Upload file to regular storage (only after blockchain success)
       const added = await uploadInvestigationFile(firId, file, type, notes);
       onAdded(added);
+      
       toast.success("File uploaded successfully");
       resetForm();
       onClose();
@@ -202,7 +230,6 @@ const AddSupplementModal = (
               disabled={loading}
             />
           </div>
-
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4">
             <Button

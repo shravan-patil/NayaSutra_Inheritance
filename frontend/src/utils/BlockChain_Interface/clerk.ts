@@ -12,16 +12,17 @@ const COURT_ADDR = import.meta.env.VITE_COURT_ADDR || "0x9fE46736679d2D9a65F0992
 
 const COURT_ABI = [
     // Writes
-    "function createCase(string _title, string _firId, string _metaData) external returns (uint256)",
-    "function assignLawyer(uint256 _caseId, address _lawyer, string _role) external",
-    "function assignJudge(uint256 _caseId, address _judge) external",
+    "function createCase(string _caseId, string _title, string _firId, address _prosecution, address _defence, address _judge, string _metaData) external",
+    "function reassignLawyer(string _caseId, address _lawyer, string _role) external",
+    "function reassignJudge(string _caseId, address _judge) external",
 
     // Reads
-    "function cases(uint256) view returns (uint256 id, string linkedFirId, string title, string accused, string filer, uint8 status, address assignedJudge, uint256 creationDate, address defence, address prosecution, uint256 nextSessionId, string metaData, address assignedClerk)",
-    "function getCaseSigners(uint256 _caseId) view returns (address clerk, address judge, address defence, address prosecution)",
+    "function cases(string) view returns (string id, string linkedFirId, string title, string accused, string filer, uint8 status, address assignedJudge, uint256 creationDate, address defence, address prosecution, uint256 nextSessionId, string metaData, address assignedClerk)",
+    "function getCaseSigners(string _caseId) view returns (address clerk, address judge, address defence, address prosecution)",
+    "function getCaseProofLinks(string _caseId) view returns (string[])",
 
     // Events
-    "event CaseCreated(uint256 indexed caseId, string title, string linkedFirId)"
+    "event CaseCreated(string indexed caseId, string title, string linkedFirId)"
 ];
 
 // --- Types ---
@@ -63,22 +64,56 @@ const getClerkContract = async (): Promise<ethers.Contract> => {
 // --- API Functions ---
 
 /**
- * Creates a new Court Case linked to an FIR
+ * Validates if a string is a valid Ethereum address
+ */
+const isValidEthereumAddress = (address: string): boolean => {
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+};
+
+/**
+ * Creates a new Court Case linked to an FIR with direct assignment of prosecution, defence, and judge
+ * @param {string} caseId - Case ID (e.g. "CASE-2024-001")
  * @param {string} title - Case Title (e.g. "State vs John Doe")
  * @param {string} firIdString - The FIR ID String (e.g. "MH-2024-001")
+ * @param {string} prosecutionAddress - The prosecution lawyer's address
+ * @param {string} defenceAddress - The defence lawyer's address
+ * @param {string} judgeAddress - The judge's address
  * @param {string} metaData - Additional JSON metadata
  */
 export const clerkCreateCase = async (
+    caseId: string,
     title: string, 
-    firIdString: string, 
+    firIdString: string,
+    prosecutionAddress: string,
+    defenceAddress: string,
+    judgeAddress: string,
     metaData: string
 ): Promise<CreateCaseResponse> => {
     const contract = await getClerkContract();
 
-    console.log(`Creating case linked to FIR ${firIdString}...`);
+    // Validate addresses to prevent ENS resolution
+    if (!isValidEthereumAddress(prosecutionAddress)) {
+        throw new Error("Invalid prosecution address format");
+    }
+    if (!isValidEthereumAddress(defenceAddress)) {
+        throw new Error("Invalid defence address format");
+    }
+    if (!isValidEthereumAddress(judgeAddress)) {
+        throw new Error("Invalid judge address format");
+    }
+
+    console.log(`Creating case ${caseId} linked to FIR ${firIdString} with direct assignments...`);
 
     // Contract call
-    const tx = await contract.createCase(title, firIdString, metaData);
+    const tx = await contract.createCase(
+        caseId, 
+        title, 
+        firIdString, 
+        prosecutionAddress,
+        defenceAddress,
+        judgeAddress,
+        metaData
+    );
     console.log("Tx Sent:", tx.hash);
 
     const receipt = await tx.wait();
@@ -103,47 +138,57 @@ export const clerkCreateCase = async (
 };
 
 /**
- * Assigns a lawyer to a specific case
+ * Reassigns a lawyer to a specific case
  */
-export const clerkAssignLawyer = async (
-    caseId: string | number, 
+export const clerkReassignLawyer = async (
+    caseId: string, 
     lawyerAddress: string, 
     role: string
 ): Promise<ethers.ContractTransactionReceipt | null> => {
     const contract = await getClerkContract();
 
-    const tx = await contract.assignLawyer(
-        BigInt(caseId),
+    // Validate address to prevent ENS resolution
+    if (!isValidEthereumAddress(lawyerAddress)) {
+        throw new Error("Invalid lawyer address format");
+    }
+
+    const tx = await contract.reassignLawyer(
+        caseId,
         lawyerAddress,
         role.toLowerCase()
     );
-    console.log(`Assigning ${role}... Tx: ${tx.hash}`);
+    console.log(`Reassigning ${role}... Tx: ${tx.hash}`);
     return await tx.wait();
 };
 
 /**
- * Assigns a judge to a specific case
+ * Reassigns a judge to a specific case
  */
-export const clerkAssignJudge = async (
-    caseId: string | number, 
+export const clerkReassignJudge = async (
+    caseId: string, 
     judgeAddress: string
 ): Promise<ethers.ContractTransactionReceipt | null> => {
     const contract = await getClerkContract();
 
-    const tx = await contract.assignJudge(BigInt(caseId), judgeAddress);
-    console.log(`Assigning Judge... Tx: ${tx.hash}`);
+    // Validate address to prevent ENS resolution
+    if (!isValidEthereumAddress(judgeAddress)) {
+        throw new Error("Invalid judge address format");
+    }
+
+    const tx = await contract.reassignJudge(caseId, judgeAddress);
+    console.log(`Reassigning Judge... Tx: ${tx.hash}`);
     return await tx.wait();
 };
 
 /**
  * Fetches the participants (Clerk, Judge, Lawyers) for a case
  */
-export const getCaseParticipants = async (caseId: string | number): Promise<CaseParticipants> => {
+export const getCaseParticipants = async (caseId: string): Promise<CaseParticipants> => {
     const contract = await getClerkContract();
 
     // Call getCaseSigners
     // Ethers v6 returns a Result object (array-like) for multiple return values
-    const signers = await contract.getCaseSigners(BigInt(caseId));
+    const signers = await contract.getCaseSigners(caseId);
 
     return {
         clerk: signers.clerk,
@@ -156,9 +201,9 @@ export const getCaseParticipants = async (caseId: string | number): Promise<Case
 /**
  * Fetches full details for a case
  */
-export const getCaseDetails = async (caseId: string | number): Promise<CaseDetails> => {
+export const getCaseDetails = async (caseId: string): Promise<CaseDetails> => {
     const contract = await getClerkContract();
-    const c = await contract.cases(BigInt(caseId));
+    const c = await contract.cases(caseId);
 
     // Map the struct returned by ethers v6
     return {
@@ -176,4 +221,13 @@ export const getCaseDetails = async (caseId: string | number): Promise<CaseDetai
         metaData: c.metaData,
         assignedClerk: c.assignedClerk
     };
+};
+
+/**
+ * Fetches proof links for a case
+ */
+export const getCaseProofLinks = async (caseId: string): Promise<string[]> => {
+    const contract = await getClerkContract();
+    const proofLinks = await contract.getCaseProofLinks(caseId);
+    return Array.from(proofLinks);
 };

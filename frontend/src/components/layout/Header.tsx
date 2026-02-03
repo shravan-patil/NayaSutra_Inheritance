@@ -35,10 +35,19 @@ export const Header = () => {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Shield className="w-6 h-6 text-primary" />
-              <h1 className="text-xl font-bold text-foreground">NyaySutra</h1>
-            </div>
+            <div className="relative">
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300" />
+            
+            {/* Logo container with subtle background */}
+              <img 
+                src="/logo.png" 
+                alt="NyaySutra" 
+                className="h-16 w-auto object-contain filter drop-shadow-lg group-hover:scale-105 transition-transform duration-300"
+              />
+            {/* Subtle accent line */}
+            <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-16 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          </div>
             {currentUser && (
               <Badge
                 variant="outline"

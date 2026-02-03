@@ -13,7 +13,7 @@ contract CourtSession {
     }
 
     struct Case {
-        uint256 id;
+        string id;
         string linkedFirId;
         string title;
         string accused;
@@ -36,7 +36,7 @@ contract CourtSession {
     }
 
     struct CurrSession {
-        uint256 caseId;
+        string caseId;
         uint256 sessionId;
         string ipfsCid;
         bool isAdjourned;
@@ -46,30 +46,31 @@ contract CourtSession {
 
     CourtAccessControl public accessControl;
     FIRRegistry public firRegistry;
-    uint256 private _caseIds;
 
-    mapping(uint256 => Case) public cases;
-    mapping(uint256 => address) public assignedJudgeMap;
-    mapping(uint256 => mapping(string => address)) public isAssignedLawyer;
+    mapping(string => Case) public cases;
+    mapping(string => address) public assignedJudgeMap;
+    mapping(string => mapping(string => address)) public isAssignedLawyer;
+    mapping(string => string[]) public caseProofLinks; // New mapping for case proof links
 
     // Fixed naming convention (camelCase)
-    mapping(uint256 => mapping(uint256 => SessionDetails)) public nextSessions;
-    mapping(uint256 => mapping(uint256 => CurrSession)) public sessions;
+    mapping(string => mapping(uint256 => SessionDetails)) public nextSessions;
+    mapping(string => mapping(uint256 => CurrSession)) public sessions;
 
-    event CaseCreated(uint256 indexed caseId, string title, string linkedFirId);
-    event CaseStatusChanged(uint256 indexed caseId, CaseStatus status);
-    event JudgeAssigned(uint256 indexed caseId, address judge);
-    event LawyerAssigned(uint256 indexed caseId, address lawyer, string role);
+    event CaseCreated(string indexed caseId, string title, string linkedFirId);
+    event CaseStatusChanged(string indexed caseId, CaseStatus status);
+    event JudgeAssigned(string indexed caseId, address judge);
+    event LawyerAssigned(string indexed caseId, address lawyer, string role);
     event NextSessionscheduled(
-        uint256 indexed caseId,
+        string indexed caseId,
         uint256 indexed sessionId,
         uint256 date
     );
     event SessionPublished(
-        uint256 indexed caseId,
+        string indexed caseId,
         uint256 indexed sessionId,
         string ipfsCid
     );
+    event ProofLinkAdded(string indexed caseId, string proofLink);
 
     // --- OPTIMIZED MODIFIERS ---
     modifier onlyClerk() {
@@ -77,7 +78,7 @@ contract CourtSession {
         _;
     }
 
-    modifier onlyAssignedJudge(uint256 _caseId) {
+    modifier onlyAssignedJudge(string memory _caseId) {
         _checkAssignedJudge(_caseId);
         _;
     }
@@ -89,7 +90,7 @@ contract CourtSession {
         );
     }
 
-    function _checkAssignedJudge(uint256 _caseId) internal view {
+    function _checkAssignedJudge(string memory _caseId) internal view {
         require(cases[_caseId].assignedJudge == msg.sender, "Not the Judge");
     }
 
@@ -99,53 +100,76 @@ contract CourtSession {
     }
 
     function createCase(
+        string memory _caseId,
         string memory _title,
         string memory _firId,
+        address _prosecution,
+        address _defence,
+        address _judge,
         string memory _metaData
-    ) external onlyClerk returns (uint256) {
-        _caseIds++;
-        uint256 newId = _caseIds;
+    ) external onlyClerk {
+        require(bytes(cases[_caseId].id).length == 0, "Case already exists");
+        
+        // Validate role assignments with revert statements
+        require(_prosecution != address(0), "Invalid prosecution address");
+        require(_defence != address(0), "Invalid defence address");
+        require(_judge != address(0), "Invalid judge address");
+        
+        // Check if prosecution address has lawyer role
+        require(accessControl.isLawyer(_prosecution), "Prosecution must be a lawyer");
+        
+        // Check if defence address has lawyer role
+        require(accessControl.isLawyer(_defence), "Defence must be a lawyer");
+        
+        // Check if judge address has judge role
+        require(accessControl.isJudge(_judge), "Judge must be a judge");
 
         string memory _accused = "";
         string memory _filer = "";
 
         if (bytes(_firId).length > 0) {
-            firRegistry.markForwarded(_firId, newId);
+            firRegistry.markForwarded(_firId, 0); // Pass 0 since we're using string caseId now
             (, , _accused, _filer, , ) = FIRRegistry(address(firRegistry)).firs(
                 _firId
             );
         }
 
-        cases[newId] = Case({
-            id: newId,
+        cases[_caseId] = Case({
+            id: _caseId,
             linkedFirId: _firId,
             title: _title,
             accused: _accused,
             filer: _filer,
             status: CaseStatus.CREATED,
-            assignedJudge: address(0),
+            assignedJudge: _judge,
             creationDate: block.timestamp,
-            defence: address(0),
-            prosecution: address(0),
+            defence: _defence,
+            prosecution: _prosecution,
             nextSessionId: 1,
             metaData: _metaData,
             assignedClerk: msg.sender
         });
 
-        emit CaseCreated(newId, _title, _firId);
-        return newId;
+        emit CaseCreated(_caseId, _title, _firId);
+        emit JudgeAssigned(_caseId, _judge);
+        emit LawyerAssigned(_caseId, _prosecution, "prosecution");
+        emit LawyerAssigned(_caseId, _defence, "defence");
     }
 
-    function assignLawyer(
-        uint256 _caseId,
+    function reassignLawyer(
+        string memory _caseId,
         address _lawyer,
         string calldata _role
     ) external onlyClerk {
-        require(cases[_caseId].creationDate != 0, "Case does not exist");
+        require(bytes(cases[_caseId].id).length != 0, "Case does not exist");
+        require(_lawyer != address(0), "Invalid lawyer address");
         require(accessControl.isLawyer(_lawyer), "User is not a Lawyer");
+        
+        // Validate role string
+        bytes32 roleHash = keccak256(bytes(_role));
         require(
-            isAssignedLawyer[_caseId][_role] != _lawyer,
-            "Already assigned"
+            roleHash == keccak256("defence") || roleHash == keccak256("prosecution"),
+            "Invalid role. Must be 'defence' or 'prosecution'"
         );
 
         isAssignedLawyer[_caseId][_role] = _lawyer;
@@ -158,15 +182,17 @@ contract CourtSession {
         emit LawyerAssigned(_caseId, _lawyer, _role);
     }
 
-    function assignJudge(uint256 _caseId, address _judge) external onlyClerk {
-        require(cases[_caseId].creationDate != 0, "Case does not exist");
+    function reassignJudge(string memory _caseId, address _judge) external onlyClerk {
+        require(bytes(cases[_caseId].id).length != 0, "Case does not exist");
+        require(_judge != address(0), "Invalid judge address");
         require(accessControl.isJudge(_judge), "User is not a Judge");
+        
         cases[_caseId].assignedJudge = _judge;
         emit JudgeAssigned(_caseId, _judge);
     }
 
     function scheduleSession(
-        uint256 _caseId,
+        string memory _caseId,
         uint256 _date,
         string memory _desc
     ) external onlyAssignedJudge(_caseId) {
@@ -182,7 +208,7 @@ contract CourtSession {
         emit NextSessionscheduled(_caseId, sId, _date);
     }
 
-    function startSession(uint256 _caseId) external onlyAssignedJudge(_caseId) {
+    function startSession(string memory _caseId) external onlyAssignedJudge(_caseId) {
         require(cases[_caseId].nextSessionId > 0, "No sessions scheduled");
         uint256 sId = cases[_caseId].nextSessionId - 1;
         sessions[_caseId][sId] = CurrSession({
@@ -196,7 +222,7 @@ contract CourtSession {
     }
 
     function endSession(
-        uint256 _caseId,
+        string memory _caseId,
         string memory _ipfsCid,
         bool _isAdjourned
     ) external onlyAssignedJudge(_caseId) {
@@ -212,15 +238,24 @@ contract CourtSession {
         emit SessionPublished(_caseId, sId, _ipfsCid);
     }
 
+    function addProofLink(
+        string memory _caseId,
+        string memory _proofLink
+    ) external onlyAssignedJudge(_caseId) {
+        require(bytes(cases[_caseId].id).length != 0, "Case does not exist");
+        caseProofLinks[_caseId].push(_proofLink);
+        emit ProofLinkAdded(_caseId, _proofLink);
+    }
+
     function getSessionDetails(
-        uint256 _caseId,
+        string memory _caseId,
         uint256 _sessionId
     ) external view returns (CurrSession memory) {
         return sessions[_caseId][_sessionId];
     }
 
     function getCaseSigners(
-        uint256 _caseId
+        string memory _caseId
     )
         external
         view
@@ -239,8 +274,14 @@ contract CourtSession {
         );
     }
 
+    function getCaseProofLinks(
+        string memory _caseId
+    ) external view returns (string[] memory) {
+        return caseProofLinks[_caseId];
+    }
+
     function getNextSessionDetails(
-        uint256 _caseId
+        string memory _caseId
     ) external view returns (SessionDetails memory) {
         // Safe check to prevent underflow if no sessions exist
         if (cases[_caseId].nextSessionId <= 1) {

@@ -126,6 +126,21 @@ export const addSupplementaryReport = async (firId: string, ipfsCid: string, con
 };
 
 /**
+ * Adds a proof link to an existing FIR
+ */
+export const addProofLink = async (firId: string, link: string): Promise<void> => {
+    try {
+        const contract = await getContract(true);
+        const tx = await contract.addProofLink(firId, link);
+        await tx.wait();
+        console.log(`Proof link added to FIR #${firId}`);
+    } catch (error: any) {
+        console.error("addProofLink Error:", error);
+        throw error;
+    }
+};
+
+/**
  * Fetches basic FIR details AND Proofs
  */
 export const getFirDetails = async (firId: string): Promise<any> => {

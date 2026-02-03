@@ -91,13 +91,8 @@ const Landing = () => {
       icon: "🚔",
       description: "Officers and investigators",
       color: "from-emerald-500 to-emerald-600",
-    },
-    {
-      name: "Public",
-      icon: "👥",
-      description: "Parties and witnesses",
-      color: "from-slate-400 to-slate-500",
-    },
+    }
+
   ];
 
   return (
@@ -108,36 +103,36 @@ const Landing = () => {
       <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-[120px] animate-pulse delay-1000" />
 
       {/* Navigation */}
-      <nav className="relative z-20 px-6 py-4 flex justify-between items-center max-w-7xl mx-auto">
+      <nav className="relative z-20 px-6 py-4 flex justify-center items-center max-w-7xl mx-auto">
         <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-3"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center group"
         >
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-            <Scale className="w-6 h-6 text-white" />
+          <div className="relative">
+            {/* Glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300" />
+            
+            {/* Logo container with subtle background */}
+            <div className="relative bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm rounded-2xl p-3 border border-white/10 shadow-xl group-hover:border-white/20 transition-all duration-300">
+              <img 
+                src="/logo.png" 
+                alt="NyaySutra" 
+                className="h-12 w-auto object-contain filter drop-shadow-lg group-hover:scale-105 transition-transform duration-300"
+              />
+            </div>
+            
+            {/* Subtle accent line */}
+            <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-16 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           </div>
-          <span className="text-xl font-bold text-white">NyaySutra</span>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex gap-4"
-        >
-          <Button
-            variant="outline"
-            onClick={() => navigate("/auth")}
-            className="border-slate-600 hover:border-slate-400 text-slate-200 hover:text-white"
-          >
-            Sign In
-          </Button>
-          <Button
-            onClick={() => navigate("/auth")}
-            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-          >
-            Get Started
-          </Button>
+          
+          {/* Brand text with enhanced styling */}
+          <div className="ml-4 hidden sm:block">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-emerald-400 bg-clip-text text-transparent">
+              NyaySutra
+            </h1>
+            <p className="text-xs text-slate-400 font-medium">Digital Justice System</p>
+          </div>
         </motion.div>
       </nav>
 
@@ -146,7 +141,7 @@ const Landing = () => {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="relative z-10 max-w-7xl mx-auto px-6 py-20 text-center"
+        className="relative z-10 max-w-7xl mx-auto px-6 py-10 text-center"
       >
         <motion.h1
           variants={itemVariants}
@@ -165,19 +160,13 @@ const Landing = () => {
           NyaySutra is a blockchain-powered evidence management system designed for the modern judiciary. Secure, transparent, and compliant.
         </motion.p>
 
-        <motion.div variants={itemVariants} className="flex gap-4 justify-center">
+        <motion.div variants={itemVariants} className="flex justify-center">
           <Button
             onClick={() => navigate("/auth")}
             className="px-8 py-6 text-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 gap-2"
           >
-            Start Your Journey
+            Login
             <ArrowRight className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="outline"
-            className="px-8 py-6 text-lg border-slate-600 hover:border-slate-400 text-slate-200"
-          >
-            Learn More
           </Button>
         </motion.div>
       </motion.div>
@@ -231,7 +220,7 @@ const Landing = () => {
           Specialized Portals
         </motion.h2>
 
-        <div className="grid md:grid-cols-5 gap-6">
+        <div className="grid md:grid-cols-4 gap-8">
           {roles.map((role, i) => (
             <motion.div
               key={i}
@@ -248,57 +237,7 @@ const Landing = () => {
         </div>
       </motion.div>
 
-      {/* Stats Section */}
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, amount: 0.3 }}
-        className="relative z-10 max-w-7xl mx-auto px-6 py-20"
-      >
-        <div className="grid md:grid-cols-4 gap-8 text-center">
-          {[
-            { label: "Cases Managed", value: "10,000+" },
-            { label: "Evidence Items", value: "50,000+" },
-            { label: "Active Users", value: "5,000+" },
-            { label: "Court Systems", value: "100+" },
-          ].map((stat, i) => (
-            <motion.div key={i} variants={itemVariants}>
-              <div className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-2">
-                {stat.value}
-              </div>
-              <div className="text-slate-400">{stat.label}</div>
-            </motion.div>
-          ))}
-        </div>
-      </motion.div>
 
-      {/* CTA Section */}
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, amount: 0.3 }}
-        className="relative z-10 max-w-4xl mx-auto px-6 py-20 text-center"
-      >
-        <motion.div
-          variants={itemVariants}
-          className="glass-card p-12 rounded-2xl border border-white/10"
-        >
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Ready to Transform Your Judiciary?
-          </h2>
-          <p className="text-slate-300 mb-8">
-            Join thousands of courts worldwide using NyaySutra for secure, transparent evidence management.
-          </p>
-          <Button
-            onClick={() => navigate("/auth")}
-            className="px-8 py-6 text-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-          >
-            Get Started Today
-          </Button>
-        </motion.div>
-      </motion.div>
 
       {/* Footer */}
       <motion.footer
@@ -306,7 +245,7 @@ const Landing = () => {
         initial="hidden"
         whileInView="visible"
         viewport={{ once: true }}
-        className="relative z-10 border-t border-white/10 py-8 text-center text-slate-400 mt-20"
+        className="relative z-10 border-t border-white/10 py-8 text-center text-slate-400 mt-10"
       >
         <p>&copy; 2026 NyaySutra. All rights reserved. Securing Justice Digitally.</p>
       </motion.footer>

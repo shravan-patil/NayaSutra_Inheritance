@@ -8,6 +8,7 @@ import {
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 // Define Roles matching your Database + Frontend mapping
 type RoleCategory =
@@ -161,6 +162,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSession(null);
     setProfile(null);
     toast.success("Signed out successfully");
+    const navigate = useNavigate();
+    navigate('/');
   };
 
   // Legacy stubs (unused but kept to prevent TS errors in other files)

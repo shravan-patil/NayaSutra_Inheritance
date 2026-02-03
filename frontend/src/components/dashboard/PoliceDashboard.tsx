@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  Siren,
   AlertCircle,
   BarChart3,
   CheckCircle2,
@@ -18,8 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { UserNotifications } from "@/components/notifications/UserNotifications";
-import { NotificationTab } from "@/components/notifications/NotificationTab";
 
 export const PoliceDashboard = () => {
   const [counts, setCounts] = useState({ total: 0, pending: 0 });
@@ -99,7 +98,7 @@ export const PoliceDashboard = () => {
         return <CheckCircle2 className="w-4 h-4" />;
       case "pending":
       case "investigation":
-        return <AlertCircle className="w-4 h-4" />;
+        return <Siren className="w-4 h-4" />;
       case "under review":
         return <Clock className="w-4 h-4" />;
       default:
@@ -132,7 +131,7 @@ export const PoliceDashboard = () => {
             <div>
               <h1 className="text-4xl font-bold text-white flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-xl flex items-center justify-center">
-                  <AlertCircle className="w-7 h-7 text-white" />
+                  <Siren className="w-7 h-7 text-white" />
                 </div>
                 Police Dashboard
               </h1>
@@ -142,7 +141,6 @@ export const PoliceDashboard = () => {
             </div>
             <div className="flex items-center gap-4">
               <div className="relative">
-                <UserNotifications />
               </div>
               <Link to="/police/new-fir">
                 <Button className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg shadow-emerald-500/20 flex items-center gap-2">
@@ -304,11 +302,6 @@ export const PoliceDashboard = () => {
               </div>
             </motion.div>
 
-            {/* Notifications Tab */}
-            <motion.div variants={itemVariants}>
-              <NotificationTab />
-            </motion.div>
-
             {/* Quick Stats & Info */}
             <motion.div
               variants={itemVariants}
@@ -415,28 +408,6 @@ export const PoliceDashboard = () => {
                 </div>
               </div>
             </motion.div>
-          </motion.div>
-
-          {/* Info Banner */}
-          <motion.div
-            variants={itemVariants}
-            className="glass-card p-6 rounded-xl border border-emerald-500/30 bg-emerald-500/5"
-          >
-            <div className="flex items-start gap-4">
-              <div className="p-3 rounded-lg bg-emerald-500/20">
-                <BarChart3 className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div>
-                <h3 className="text-white font-semibold mb-1">
-                  Secure Investigation Management
-                </h3>
-                <p className="text-sm text-slate-400">
-                  All FIR records and investigation files are encrypted and
-                  stored securely with blockchain verification. Track evidence,
-                  manage cases, and maintain complete audit trails.
-                </p>
-              </div>
-            </div>
           </motion.div>
         </motion.div>
       </main>

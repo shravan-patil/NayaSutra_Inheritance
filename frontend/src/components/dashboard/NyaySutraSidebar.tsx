@@ -180,6 +180,7 @@ export const NyaySutraSidebar = () => {
           "fixed left-0 top-0 h-screen bg-sidebar-background border-r border-sidebar-border flex flex-col transition-all duration-300 z-50",
           collapsed ? "w-16" : "w-64",
         )}
+        onClick={() => setCollapsed(!collapsed)}
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
@@ -187,7 +188,7 @@ export const NyaySutraSidebar = () => {
             <Scale className="h-6 w-6 text-primary-foreground" />
           </div>
           {!collapsed && (
-            <div>
+            <div className="mt-7 backdrop-blur-sm">
               <h1 className="font-bold text-lg text-sidebar-foreground">
                 NyaySutra
               </h1>

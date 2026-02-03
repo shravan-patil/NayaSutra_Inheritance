@@ -16,6 +16,8 @@ import { Web3Provider } from "@/contexts/Web3Context";
 // Removed LoadingSpinner import as we are making auth checks instant
 // import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Header } from "@/components/layout/Header";
+import { PoliceProtectedRoute, ProfileProtectedRoute } from "@/components/RoleBasedRoute";
+import { AuthValidator } from "@/components/AuthValidator";
 import LawyerNotifications from "./pages/LawyerNotifications";
 
 // Pages
@@ -50,19 +52,21 @@ const queryClient = new QueryClient({
 // Glassmorphism Layout Wrapper
 const GlassLayout = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
-      {/* Animated Background Grid */}
-      <div className="absolute inset-0 grid-background opacity-20" />
-      <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] animate-pulse" />
-      <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px] animate-pulse delay-1000" />
+    <AuthValidator>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
+        {/* Animated Background Grid */}
+        <div className="absolute inset-0 grid-background opacity-20" />
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px] animate-pulse delay-1000" />
 
-      <div className="relative z-10">
-        <Header />
-        <main className="container mx-auto px-4 py-6">
-          <Outlet />
-        </main>
+        <div className="relative z-10">
+          <Header />
+          <main className="container mx-auto px-4 py-6">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </AuthValidator>
   );
 };
 
@@ -72,22 +76,23 @@ const GlassLayout = () => {
 // This ignores Supabase session status and trusts your manual token.
 const ProtectedRoute = forwardRef<HTMLDivElement>(() => {
   const token = localStorage.getItem("auth_token");
-  const isAuthenticated = !!token; // True if token exists
+  const userId = localStorage.getItem("user_id");
+  const userRole = localStorage.getItem("user_role");
+  
+  // Check if token exists and user data is present
+  const isAuthenticated = !!token && !!userId && !!userRole;
 
   // Instant check - no loading spinner needed
   return isAuthenticated ? <GlassLayout /> : <Navigate to="/" replace />;
 });
 ProtectedRoute.displayName = "ProtectedRoute";
 
-// 2. Public Route: Redirects to Dashboard if token exists
-// Prevents logged-in users from seeing the Landing/Auth page
+
 const PublicRoute = forwardRef<HTMLDivElement>(() => {
   const token = localStorage.getItem("auth_token");
   const isAuthenticated = !!token;
 
   if (isAuthenticated) {
-    // Check if user is authenticated and redirect based on role
-    // For now, redirect to dashboard - role-based redirect will happen in Dashboard component
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -109,7 +114,6 @@ const routes: RouteObject[] = [
     element: <ProtectedRoute />,
     children: [
       { path: "/dashboard", element: <Dashboard /> },
-      { path: "/police/dashboard", element: <PoliceDashboard /> },
       { path: "/cause-list", element: <CauseList /> },
       { path: "/judgment-writer", element: <JudgmentWriter /> },
       { path: "/evidence-vault", element: <EvidenceVault /> },
@@ -122,8 +126,24 @@ const routes: RouteObject[] = [
       { path: "/lawyer/today-cases", element: <TodayCases /> },
       { path: "/lawyer/case-repository", element: <CaseRepository /> },
       { path: "/lawyer/notifications", element: <LawyerNotifications /> },
-      { path: "/police/new-fir", element: <NewFIR /> },
-      { path: "/police/firs/:id", element: <FIRDetails /> },
+    ],
+  },
+  {
+    path: "/police",
+    element: <PoliceProtectedRoute><GlassLayout /></PoliceProtectedRoute>,
+    children: [
+      { path: "dashboard", element: <PoliceDashboard /> },
+      { path: "new-fir", element: <NewFIR /> },
+      { path: "fir/:id", element: <FIRDetails /> },
+    ],
+  },
+  {
+    path: "/profile",
+    element: <ProfileProtectedRoute><GlassLayout /></ProfileProtectedRoute>,
+    children: [
+      // Add any profile-related routes here
+      // For example: profile pages, settings, etc.
+      { path: "", element: <Dashboard /> }, // Placeholder - replace with actual profile component
     ],
   },
   { path: "/login", element: <Navigate to="/auth" replace /> },

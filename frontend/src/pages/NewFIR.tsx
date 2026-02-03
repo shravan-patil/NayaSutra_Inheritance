@@ -79,50 +79,11 @@ const handleSubmit = async (e: any) => {
       const contentHash = ethers.keccak256(ethers.toUtf8Bytes(integrityPayload));
 
       // --- STEP 2: IPFS UPLOAD ---
-      // Optimization: Only upload if we don't already have the CID? 
-      // For simplicity, we assume we re-upload or you can cache it.
       setLoadingStep("Uploading to IPFS...");
       const ipfsCid = await mockUploadToPinata(firFile);
       
-      // --- STEP 3: DATABASE SYNC (Check-or-Create) ---
-      setLoadingStep("Syncing with Database...");
-      
-      let firRecordId = "";
-      
-      // A. Check if FIR already exists
-      const existingFir = await getFIRByNumber(form.fir_number);
-
-      if (existingFir) {
-        console.log("FIR already exists in DB. Resuming submission...");
-        
-        // Safety Check: Is it already on blockchain?
-        // if (existingFir.is_on_chain) {
-        //   toast.error("This FIR is already filed on the Blockchain!");
-        //   setLoading(false);
-        //   return;
-        // }
-        
-        // Reuse existing ID
-        firRecordId = existingFir.id;
-        
-      } else {
-        // B. Create NEW Record
-        const supabasePayload = { 
-          ...form,
-          ipfs_cid: ipfsCid,
-          content_hash: contentHash, 
-          blockchain_tx_hash: "PENDING", 
-          is_on_chain: false 
-        };
-        
-        const createdRecord = await createFIR(supabasePayload);
-        if (!createdRecord?.id) throw new Error("Database save failed");
-        firRecordId = createdRecord.id;
-      }
-
-      // --- STEP 4: BLOCKCHAIN TRANSACTION ---
-      // Now that we have a valid DB ID (new or existing), we can proceed safely
-      setLoadingStep("Opening MetaMask...");
+      // --- STEP 3: BLOCKCHAIN TRANSACTION FIRST ---
+      setLoadingStep("Creating blockchain entry...");
       
       const { txHash } = await fileFir(
         form.fir_number,
@@ -134,22 +95,60 @@ const handleSubmit = async (e: any) => {
         contentHash
       );
 
-      // --- STEP 5: FINALIZE ---
-      setLoadingStep("Updating Record...");
+      // --- STEP 4: DATABASE SYNC AFTER BLOCKCHAIN CONFIRMATION ---
+      setLoadingStep("Updating database...");
       
-      // Update the record (whether it was new or existing) with the Tx Hash
-      await updateFirTxHash(firRecordId, txHash);
+      let firRecordId = "";
+      
+      // A. Check if FIR already exists
+      const existingFir = await getFIRByNumber(form.fir_number);
 
-      toast.success("FIR filed successfully!");
-      navigate(`/police/firs/${firRecordId}`);
+      if (existingFir) {
+        console.log("FIR already exists in DB. Updating with blockchain confirmation...");
+        
+        // Safety Check: Is it already on blockchain?
+        if (existingFir.is_on_chain) {
+          toast.error("This FIR is already filed on the Blockchain!");
+          setLoading(false);
+          return;
+        }
+        
+        // Update existing record with blockchain confirmation
+        firRecordId = existingFir.id;
+        
+      } else {
+        // B. Create NEW Record with blockchain confirmation
+        const supabasePayload = { 
+          ...form,
+          ipfs_cid: ipfsCid,
+          content_hash: contentHash, 
+          blockchain_tx_hash: txHash, // Use confirmed txHash
+          is_on_chain: true // Mark as on-chain since blockchain succeeded
+        };
+        
+        const createdRecord = await createFIR(supabasePayload);
+        if (!createdRecord?.id) throw new Error("Database save failed");
+        firRecordId = createdRecord.id;
+      }
+
+      // --- STEP 5: FINALIZE ---
+      setLoadingStep("Finalizing...");
+      
+      // For existing records, update with blockchain confirmation
+      if (existingFir) {
+        await updateFirTxHash(firRecordId, txHash);
+      }
+
+      toast.success("FIR filed successfully on blockchain!");
+      navigate(`/police/fir/${firRecordId}`);
 
     } catch (err: any) {
       console.error(err);
       if (err.message?.includes("user rejected") || err.code === 4001 || err.code === "ACTION_REJECTED") {
-        toast.error("Transaction rejected by wallet.");
+        toast.error("Transaction rejected by wallet. No database changes made.");
       } else {
-        // Show specific database errors if they still leak through
-        const msg = err.details || err.message || "Failed to create FIR";
+        // Show specific blockchain errors
+        const msg = err.details || err.message || "Failed to create FIR on blockchain";
         toast.error(msg);
       }
     } finally {
@@ -308,7 +307,7 @@ const handleSubmit = async (e: any) => {
                             ) : (
                                 <>
                                     <FileText className="w-4 h-4 mr-2" />
-                                    File FIR (IPFS + Chain)
+                                    File FIR
                                 </>
                             )}
                         </Button>

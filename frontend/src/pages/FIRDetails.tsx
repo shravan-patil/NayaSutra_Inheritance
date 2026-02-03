@@ -15,10 +15,12 @@ import {
   User,
   ZoomIn,
   ZoomOut,
+  Upload,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import {
   getFIRByNumber,
+  getFIRById,
   listInvestigationFiles,
 } from "@/services/policeService";
 import AddSupplementModal from "@/components/police/AddSupplementModal";
@@ -49,7 +51,7 @@ const FIRDetails = () => {
 
     const loadData = async () => {
       try {
-        const f = await getFIRByNumber(id);
+        const f = await getFIRById(id);
         if (mounted) {
           setFir(f);
           if (f) {
@@ -578,108 +580,199 @@ const FIRDetails = () => {
         </div>
       </motion.div>
 
-      {/* Upload Section */}
+      {/* FIR Document Section */}
       <motion.div
         variants={itemVariants}
         className="glass-card p-8 rounded-xl border border-white/10"
       >
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-400">
-              <Plus className="w-5 h-5" />
+            <div className="p-3 rounded-lg bg-red-500/10 text-red-400">
+              <FileText className="w-5 h-5" />
             </div>
-            <h2 className="text-2xl font-semibold text-white">
-              Add Investigation Files
-            </h2>
+            <div>
+              <h2 className="text-2xl font-semibold text-white">
+                Original FIR Document
+              </h2>
+              <p className="text-sm text-slate-400">Official First Information Report</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {fir.ipfs_cid && (
+              <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
+                <span className="text-xs text-emerald-400">On Blockchain</span>
+              </div>
+            )}
+            <Button
+              onClick={() => setShowPdfViewer(true)}
+              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg shadow-red-500/20 flex items-center gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              View FIR
+            </Button>
           </div>
         </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <Button
-            onClick={() => {
-              setModalCategory("chargesheet");
-              setShowModal(true);
-            }}
-            className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 py-6 text-base"
-          >
-            <Plus className="w-5 h-5" />
-            Add Supplementary Chargesheet
-          </Button>
-          <Button
-            onClick={() => {
-              setModalCategory("evidence");
-              setShowModal(true);
-            }}
-            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 py-6 text-base"
-          >
-            <Plus className="w-5 h-5" />
-            Add Proof / Evidence
-          </Button>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                FIR Number
+              </p>
+              <p className="text-lg font-semibold text-white font-mono bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                {fir.fir_number || "N/A"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                Status
+              </p>
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  fir.is_on_chain ? 'bg-emerald-500' : 'bg-amber-500'
+                }`} />
+                <p className="text-lg font-semibold text-white">
+                  {fir.is_on_chain ? 'Blockchain Verified' : 'Registered'}
+                </p>
+              </div>
+            </div>
+            {fir.blockchain_tx_hash && (
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                  Blockchain Transaction
+                </p>
+                <p className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 break-all">
+                  {fir.blockchain_tx_hash}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                IPFS CID
+              </p>
+              <p className="text-xs font-mono text-blue-400 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 break-all">
+                {fir.ipfs_cid || "Not uploaded to IPFS"}
+              </p>
+            </div>
+            {fir.content_hash && (
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
+                  Content Hash
+                </p>
+                <p className="text-xs font-mono text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 break-all">
+                  {fir.content_hash}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
 
-      {/* Investigation Files */}
-      {files.length > 0 && (
-        <motion.div
-          variants={itemVariants}
-          className="glass-card p-8 rounded-xl border border-white/10"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 rounded-lg bg-purple-500/10 text-purple-400">
-              <Download className="w-5 h-5" />
+      {/* Supplementary Reports Section */}
+      <motion.div
+        variants={itemVariants}
+        className="glass-card p-8 rounded-xl border border-white/10"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-lg bg-orange-500/10 text-orange-400">
+              <BookOpen className="w-5 h-5" />
             </div>
-            <h2 className="text-2xl font-semibold text-white">
-              Investigation Files
-            </h2>
+            <div>
+              <h2 className="text-2xl font-semibold text-white">
+                Supplementary Reports
+              </h2>
+              <p className="text-sm text-slate-400">Additional investigation documents</p>
+            </div>
           </div>
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 bg-orange-500/10 border border-orange-500/30 rounded-full">
+              <span className="text-xs text-orange-400">
+                {files.filter(f => f.file_type === 'Supplementary Chargesheet').length} Reports
+              </span>
+            </span>
+          </div>
+        </div>
 
+        {files.filter(f => f.file_type === 'Supplementary Chargesheet').length > 0 ? (
           <div className="grid gap-4">
-            {files.map((file) => (
+            {files
+              .filter(f => f.file_type === 'Supplementary Chargesheet')
+              .map((file, index) => (
               <motion.div
                 key={file.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-6 rounded-lg bg-purple-500/10 border border-purple-500/20 hover:border-purple-500/40 transition-all group"
+                transition={{ delay: index * 0.1 }}
+                className="p-6 rounded-lg bg-orange-500/10 border border-orange-500/20 hover:border-orange-500/40 transition-all group"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 rounded-lg bg-purple-500/30">
-                        <FileText className="w-4 h-4 text-purple-300" />
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-orange-500/30">
+                        <BookOpen className="w-4 h-4 text-orange-300" />
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-purple-200">
-                          {file.file_type || "Document"}
-                        </h3>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-orange-200">
+                            Supplementary Chargesheet #{index + 1}
+                          </h3>
+                          <div className="px-2 py-1 bg-orange-500/20 rounded-full">
+                            <span className="text-xs text-orange-300">Official</span>
+                          </div>
+                        </div>
                         <p className="text-xs text-slate-400">
-                          Uploaded: {file.uploaded_at
-                            ? new Date(file.uploaded_at).toLocaleDateString(
-                              "en-IN",
-                            )
+                          Filed: {file.uploaded_at
+                            ? new Date(file.uploaded_at).toLocaleDateString("en-IN", {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
                             : "N/A"}
                         </p>
                       </div>
                     </div>
                     {file.notes && (
-                      <p className="text-sm text-slate-300 mt-3 p-3 rounded bg-white/5 border border-white/10">
-                        {file.notes}
-                      </p>
+                      <div className="mb-3">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
+                          Investigation Notes
+                        </p>
+                        <p className="text-sm text-slate-300 p-3 rounded bg-white/5 border border-white/10 leading-relaxed">
+                          {file.notes}
+                        </p>
+                      </div>
                     )}
+                    <div className="flex items-center gap-4 text-xs text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3 h-3" />
+                        Official Document
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString("en-IN") : "N/A"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 ml-4">
                     <a
                       href={file.file_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/40 text-purple-300 transition-colors"
-                      title="Open file"
+                      className="p-2 rounded-lg bg-orange-500/20 hover:bg-orange-500/40 text-orange-300 transition-colors"
+                      title="View document"
                     >
                       <Eye className="w-5 h-5" />
                     </a>
                     <a
                       href={file.file_url}
                       download
-                      className="p-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/40 text-purple-300 transition-colors"
-                      title="Download file"
+                      className="p-2 rounded-lg bg-orange-500/20 hover:bg-orange-500/40 text-orange-300 transition-colors"
+                      title="Download document"
                     >
                       <Download className="w-5 h-5" />
                     </a>
@@ -688,17 +781,225 @@ const FIRDetails = () => {
               </motion.div>
             ))}
           </div>
-        </motion.div>
-      )}
+        ) : (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="w-8 h-8 text-orange-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              No Supplementary Reports
+            </h3>
+            <p className="text-slate-400 mb-6">
+              No supplementary chargesheets have been filed for this FIR yet.
+            </p>
+            <Button
+              onClick={() => {
+                setModalCategory("chargesheet");
+                setShowModal(true);
+              }}
+              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white shadow-lg shadow-orange-500/20"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Supplementary Report
+            </Button>
+          </div>
+        )}
+      </motion.div>
+
+      {/* Evidence & Proof Section */}
+      <motion.div
+        variants={itemVariants}
+        className="glass-card p-8 rounded-xl border border-white/10"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-lg bg-blue-500/10 text-blue-400">
+              <Download className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-semibold text-white">
+                Evidence & Proof Documents
+              </h2>
+              <p className="text-sm text-slate-400">Supporting evidence and proof materials</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-full">
+              <span className="text-xs text-blue-400">
+                {files.filter(f => f.file_type !== 'Supplementary Chargesheet').length} Files
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {files.filter(f => f.file_type !== 'Supplementary Chargesheet').length > 0 ? (
+          <div className="grid gap-4">
+            {files
+              .filter(f => f.file_type !== 'Supplementary Chargesheet')
+              .map((file, index) => (
+              <motion.div
+                key={file.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="p-6 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/40 transition-all group"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-blue-500/30">
+                        <Download className="w-4 h-4 text-blue-300" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-blue-200">
+                            {file.file_type || "Evidence Document"}
+                          </h3>
+                          <div className="px-2 py-1 bg-blue-500/20 rounded-full">
+                            <span className="text-xs text-blue-300">Evidence</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          Added: {file.uploaded_at
+                            ? new Date(file.uploaded_at).toLocaleDateString("en-IN", {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            : "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                    {file.notes && (
+                      <div className="mb-3">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
+                          Evidence Notes
+                        </p>
+                        <p className="text-sm text-slate-300 p-3 rounded bg-white/5 border border-white/10 leading-relaxed">
+                          {file.notes}
+                        </p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-4 text-xs text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3 h-3" />
+                        {file.file_type || "Document"}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString("en-IN") : "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <a
+                      href={file.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 transition-colors"
+                      title="View evidence"
+                    >
+                      <Eye className="w-5 h-5" />
+                    </a>
+                    <a
+                      href={file.file_url}
+                      download
+                      className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 transition-colors"
+                      title="Download evidence"
+                    >
+                      <Download className="w-5 h-5" />
+                    </a>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Download className="w-8 h-8 text-blue-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              No Evidence Documents
+            </h3>
+            <p className="text-slate-400 mb-6">
+              No supporting evidence or proof documents have been added yet.
+            </p>
+            <Button
+              onClick={() => {
+                setModalCategory("evidence");
+                setShowModal(true);
+              }}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/20"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Evidence
+            </Button>
+          </div>
+        )}
+      </motion.div>
 
       {showModal && (
         <AddSupplementModal
           firId={fir.id}
+          firNumber={fir.fir_number}
           onClose={() => setShowModal(false)}
           onAdded={handleFileAdded}
           category={modalCategory}
         />
       )}
+
+      {/* Floating Action Button */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.5, type: "spring", stiffness: 200, damping: 15 }}
+        className="fixed bottom-8 right-8 z-40"
+      >
+        <div className="relative group">
+          {/* Quick Actions Menu */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 0, y: 10 }}
+            whileHover={{ opacity: 1, y: 0 }}
+            className="absolute bottom-16 right-0 space-y-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Button
+              onClick={() => {
+                setModalCategory("chargesheet");
+                setShowModal(true);
+              }}
+              className="flex items-center gap-2 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white shadow-lg shadow-orange-500/20 whitespace-nowrap"
+              size="sm"
+            >
+              <BookOpen className="w-4 h-4" />
+              Supplementary Report
+            </Button>
+            <div className="w-full"></div>
+            <Button
+              onClick={() => {
+                setModalCategory("evidence");
+                setShowModal(true);
+              }}
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/20 whitespace-nowrap"
+              size="sm"
+            >
+              <Upload className="w-4 h-4" />
+              Add Evidence
+            </Button>
+          </motion.div>
+
+          {/* Main FAB */}
+          <Button
+            className="w-14 h-14 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center group"
+            size="icon"
+          >
+            <Plus className="w-6 h-6 group-hover:rotate-45 transition-transform duration-300" />
+          </Button>
+        </div>
+      </motion.div>
 
       {/* PDF Viewer Panel */}
       {showPdfViewer && (
