@@ -25,7 +25,13 @@ interface NotificationDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSign: (notification: Notification) => Promise<void>;
+  onCloseSession?: (notification: Notification) => Promise<void>;
+  onScheduleSession?: (notification: Notification) => Promise<void>;
+  onEndSession?: (notification: Notification) => Promise<void>;
   isSigning: boolean;
+  isClosingSession?: boolean;
+  isSchedulingSession?: boolean;
+  isEndingSession?: boolean;
   sessionStatus?: 'pending' | 'in_progress' | 'final_submission';
   signingStatus?: Array<{
     userId: string;
@@ -43,7 +49,13 @@ export const NotificationDetailModal = ({
   isOpen, 
   onClose, 
   onSign, 
+  onCloseSession,
+  onScheduleSession,
+  onEndSession,
   isSigning,
+  isClosingSession = false,
+  isSchedulingSession = false,
+  isEndingSession = false,
   sessionStatus = 'pending',
   signingStatus = [],
   isJudge = false,
@@ -55,6 +67,10 @@ export const NotificationDetailModal = ({
 
   const hasSigned = notification.is_read;
   const showSignButton = !notification.is_read || notification.type === 'session_ended';
+  const allFourSigned = isJudge && allPartiesSigned && hasSigned;
+  const showCloseSessionButton = allFourSigned && !!onCloseSession;
+  const showScheduleSessionButton = allFourSigned && !!onScheduleSession;
+  const showEndSessionButton = allFourSigned && !!onEndSession;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -319,6 +335,66 @@ export const NotificationDetailModal = ({
               <Button variant="outline" onClick={onClose} className="border-white/20 text-slate-300 hover:bg-white/10 hover:text-white">
                 Close
               </Button>
+
+              {showScheduleSessionButton && (
+                <Button
+                  onClick={() => onScheduleSession?.(notification)}
+                  disabled={isSchedulingSession}
+                  className="font-semibold px-6 py-2 shadow-lg bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {isSchedulingSession ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Scheduling...
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-4 h-4 mr-2" />
+                      Schedule Session
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {showEndSessionButton && (
+                <Button
+                  onClick={() => onEndSession?.(notification)}
+                  disabled={isEndingSession}
+                  className="font-semibold px-6 py-2 shadow-lg bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isEndingSession ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Ending...
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      End Session
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {showCloseSessionButton && (
+                <Button
+                  onClick={() => onCloseSession?.(notification)}
+                  disabled={isClosingSession}
+                  className="font-semibold px-6 py-2 shadow-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {isClosingSession ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Closing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Close Session
+                    </>
+                  )}
+                </Button>
+              )}
               
               {showSignButton && !hasSigned && (
                 <Button 
