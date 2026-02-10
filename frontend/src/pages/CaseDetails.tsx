@@ -2,26 +2,16 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
-  AudioLines,
   CheckCircle2,
   Clock,
   File,
   FileText,
   FileText as FileTextIcon,
-  Filter,
-  FolderOpen,
-  Grid3X3,
-  Image,
-  List,
-  ListOrdered,
-  Lock,
   Play,
   Save,
-  Search,
   Shield,
   Square,
   Upload,
-  Video,
   Undo,
   Redo,
   Bold,
@@ -30,6 +20,8 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  List,
+  ListOrdered,
   Printer,
   Download,
   Users,
@@ -57,7 +49,13 @@ import { NotificationDetailModal } from "@/components/notifications/Notification
 import { useWeb3 } from "@/contexts/Web3Context";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { ReviewVault } from "@/components/dashboard/judge/ReviewVault";
+import { EvidenceList } from "@/components/cases/EvidenceList";
 import { ScheduleHearingDialog } from "@/components/ScheduleHearingDialog";
+
+// --- NEW IMPORTS ---
+import { EvidenceUploader } from "@/components/cases/EvidenceUploader";
+import { EvidenceVault } from "@/components/cases/EvidenceVault";
 
 // Match the actual database schema for cases table
 type DbCase = {
@@ -95,11 +93,7 @@ const CaseDetails = () => {
   const [lawyerAName, setLawyerAName] = useState<string | null>(null);
   const [lawyerBName, setLawyerBName] = useState<string | null>(null);
 
-  // Evidence search state
-  const [searchQuery, setSearchQuery] = useState("");
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-  const [filterCategory, setFilterCategory] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   // Session notes state
   const [sessionNotes, setSessionNotes] = useState("");
@@ -418,21 +412,6 @@ const CaseDetails = () => {
     return `${secs}s`;
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case "document":
-        return <FileText className="h-5 w-5 text-blue-400" />;
-      case "video":
-        return <Video className="h-5 w-5 text-purple-400" />;
-      case "audio":
-        return <AudioLines className="h-5 w-5 text-amber-400" />;
-      case "image":
-        return <Image className="h-5 w-5 text-emerald-400" />;
-      default:
-        return <File className="h-5 w-5 text-slate-400" />;
-    }
-  };
-
   const fetchData = async () => {
     if (!id) return;
 
@@ -507,7 +486,7 @@ const CaseDetails = () => {
   }, [id]);
 
   const isJudge = profile?.role_category === "judiciary" || profile?.role_category === "judge";
-  const isClerk = profile?.role_category === "clerk";
+  // const isClerk = profile?.role_category === "clerk"; // Unused now
   const isLawyer = profile?.role_category === "lawyer";
 
   // Determine default tab based on URL params and user role
@@ -1039,6 +1018,15 @@ const CaseDetails = () => {
               >
                 Overview
               </TabsTrigger>
+              {isJudge && (
+                <TabsTrigger
+                  value="review"
+                  className="data-[state=active]:bg-secondary"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Review Vault
+                </TabsTrigger>
+              )}
               <TabsTrigger
                 value="evidence"
                 className="data-[state=active]:bg-secondary"
@@ -1074,170 +1062,25 @@ const CaseDetails = () => {
               </Card>
             </TabsContent>
 
-            <TabsContent value="evidence">
-              <div className="space-y-6">
-                {/* Evidence Header & Upload */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-primary" />
-                      Evidence Vault
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Secure evidence for case {caseData.case_number}
-                    </p>
-                  </div>
-                  {courtSession.isSessionActive && isClerk && (
-                    <label>
-                      <input
-                        type="file"
-                        multiple
-                        onChange={handleEvidenceUpload}
-                        className="hidden"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4,.mp3,.wav"
-                      />
-                      <Button
-                        asChild
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
-                      >
-                        <span>
-                          <Upload className="w-4 h-4 mr-2" />
-                          Upload Evidence
-                        </span>
-                      </Button>
-                    </label>
-                  )}
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-4 gap-4">
-                  <Card className="card-glass border-border/50">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="p-3 rounded-xl bg-primary/10">
-                        <FolderOpen className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">0</p>
-                        <p className="text-sm text-muted-foreground">
-                          Total Files
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="card-glass border-border/50">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="p-3 rounded-xl bg-blue-500/10">
-                        <FileText className="h-6 w-6 text-blue-400" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">0</p>
-                        <p className="text-sm text-muted-foreground">
-                          Documents
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="card-glass border-border/50">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="p-3 rounded-xl bg-purple-500/10">
-                        <Video className="h-6 w-6 text-purple-400" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">0</p>
-                        <p className="text-sm text-muted-foreground">
-                          Media Files
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="card-glass border-border/50">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="p-3 rounded-xl bg-amber-500/10">
-                        <Lock className="h-6 w-6 text-amber-400" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-foreground">0</p>
-                        <p className="text-sm text-muted-foreground">Sealed</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-
-                {/* Filters */}
-                <Card className="card-glass border-border/50">
+            {isJudge && (
+              <TabsContent value="review">
+                <Card className="border-border/50 bg-gray-900/20">
                   <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search evidence files..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="pl-10 bg-muted/50 border-border"
-                        />
-                      </div>
-                      <Select
-                        value={filterCategory}
-                        onValueChange={setFilterCategory}
-                      >
-                        <SelectTrigger className="w-48 bg-muted/50 border-border">
-                          <Filter className="h-4 w-4 mr-2" />
-                          <SelectValue placeholder="Filter by type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Types</SelectItem>
-                          <SelectItem value="document">Documents</SelectItem>
-                          <SelectItem value="image">Images</SelectItem>
-                          <SelectItem value="video">Videos</SelectItem>
-                          <SelectItem value="audio">Audio</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <div className="flex items-center border border-border rounded-lg">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={cn(viewMode === "grid" && "bg-muted")}
-                          onClick={() => setViewMode("grid")}
-                        >
-                          <Grid3X3 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={cn(viewMode === "list" && "bg-muted")}
-                          onClick={() => setViewMode("list")}
-                        >
-                          <List className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                    <ReviewVault caseId={id || ""} />
                   </CardContent>
                 </Card>
+              </TabsContent>
+            )}
 
-                {/* Empty State */}
-                <Card className="card-glass border-border/50">
-                  <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                    <Shield className="h-16 w-16 mb-4 opacity-50" />
-                    <h3 className="text-lg font-semibold text-foreground mb-2">
-                      No Evidence Uploaded
-                    </h3>
-                    <p className="text-center max-w-md">
-                      Evidence files for this case will appear here. Upload
-                      evidence to secure it in the vault.
-                    </p>
-                    <div className="flex items-center gap-4 mt-6">
-                      {getCategoryIcon("document")}
-                      {getCategoryIcon("image")}
-                      {getCategoryIcon("video")}
-                      {getCategoryIcon("audio")}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+            <TabsContent value="evidence">
+              {/* --- REAL EVIDENCE VAULT INTEGRATION --- */}
+              <Card className="border-border/50 bg-gray-900/20">
+                <CardContent className="p-4">
+                  <EvidenceList 
+                    caseId={id || ""} 
+                  />
+                </CardContent>
+              </Card>
             </TabsContent>
 
             {isLawyer && (
@@ -1247,56 +1090,16 @@ const CaseDetails = () => {
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-6"
                 >
-                  {/* Upload Header */}
-                  <Card className="border-border/50">
-                    <CardHeader>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-lg bg-primary/10 border border-primary/20">
-                          <Upload className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-lg">Upload Evidence</CardTitle>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Upload evidence for case {caseData.case_number}
-                          </p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                          <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                          <h3 className="text-lg font-semibold text-foreground mb-2">
-                            Upload Evidence Files
-                          </h3>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Drag and drop files here or click to browse
-                          </p>
-                          <label>
-                            <input
-                              type="file"
-                              multiple
-                              onChange={handleEvidenceUpload}
-                              className="hidden"
-                              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4,.mp3,.wav"
-                            />
-                            <Button
-                              asChild
-                              className="bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
-                            >
-                              <span>
-                                <Upload className="w-4 h-4 mr-2" />
-                                Choose Files
-                              </span>
-                            </Button>
-                          </label>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Supported formats: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG, MP4, MP3, WAV
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                   {/* --- REAL EVIDENCE UPLOADER INTEGRATION --- */}
+                   <EvidenceUploader 
+                      caseId={id || ""} 
+                      uploaderUuid={profile.id} 
+                      uploaderRole={'LAWYER'} 
+                      onUploadComplete={() => {
+                        toast.success("List refreshed");
+                        // You could trigger a re-fetch of the vault here if they share state
+                      }}
+                   />
                 </motion.div>
               </TabsContent>
             )}

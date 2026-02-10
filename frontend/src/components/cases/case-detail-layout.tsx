@@ -1,13 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { FileText, Users, Clock, FileVideo } from "lucide-react"
+import { FileText, Users, Clock, FileVideo, Eye } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import EvidenceGrid from "@/components/cases/evidence-grid"
+import { ReviewVault } from "@/components/dashboard/judge/ReviewVault"
+import { EvidenceList } from "@/components/cases/EvidenceList"
 
 type CaseDetail = {
   id: string
@@ -114,10 +115,14 @@ export default function CaseDetailLayout() {
       </div>
 
       <Tabs defaultValue="overview" onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             <span>Case Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="review" className="flex items-center gap-2">
+            <Eye className="h-4 w-4" />
+            <span>Review Vault</span>
           </TabsTrigger>
           <TabsTrigger value="evidence" className="flex items-center gap-2">
             <FileVideo className="h-4 w-4" />
@@ -288,8 +293,12 @@ export default function CaseDetailLayout() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="review" className="space-y-4">
+          <ReviewVault caseId={caseData.id} />
+        </TabsContent>
+
         <TabsContent value="evidence" className="space-y-4">
-          <EvidenceGrid caseId={caseData.id} />
+          <EvidenceList caseId={caseData.id} />
         </TabsContent>
 
         <TabsContent value="collaborators" className="space-y-4">

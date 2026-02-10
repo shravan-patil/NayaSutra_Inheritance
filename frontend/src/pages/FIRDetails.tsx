@@ -19,34 +19,39 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 import {
-  getFIRByNumber,
   getFIRById,
   listInvestigationFiles,
+  getCaseIdFromFirId,
 } from "@/services/policeService";
 import AddSupplementModal from "@/components/police/AddSupplementModal";
+import { EvidenceVault } from "@/components/cases/EvidenceVault";
+import { EvidenceUploader } from "@/components/cases/EvidenceUploader";
 import { FIR, InvestigationFile } from "@/types/case";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 const FIRDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [fir, setFir] = useState<FIR | null>(null);
   const [files, setFiles] = useState<InvestigationFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [caseId, setCaseId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalCategory, setModalCategory] = useState<
     "chargesheet" | "evidence"
   >("evidence");
   const [showPdfViewer, setShowPdfViewer] = useState(false);
   const [pdfScale, setPdfScale] = useState(1);
+  const [evidenceTab, setEvidenceTab] = useState<'vault' | 'upload'>('vault');
 
   useEffect(() => {
     if (!id) {
       setLoading(false);
       return;
     }
-
     let mounted = true;
 
     const loadData = async () => {
@@ -57,6 +62,12 @@ const FIRDetails = () => {
           if (f) {
             const fl = await listInvestigationFiles(f.id);
             if (mounted) setFiles(fl || []);
+
+            // Fetch the related case ID
+            const relatedCaseId = await getCaseIdFromFirId(f.id);
+            if (mounted) {
+              setCaseId(relatedCaseId);
+            }
           }
         }
       } catch (e) {
@@ -64,6 +75,7 @@ const FIRDetails = () => {
         if (mounted) {
           setFir(null);
           setFiles([]);
+          setCaseId(null);
         }
       } finally {
         if (mounted) {
@@ -76,87 +88,17 @@ const FIRDetails = () => {
     return () => {
       mounted = false;
     };
-  }, [id]);
+  }, [id]); // Removed 'files' and 'caseId' from dependency array to prevent infinite loops
 
   const handleFileAdded = (newFile: InvestigationFile) => {
     setFiles((prevFiles) => [...prevFiles, newFile]);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <LoadingSpinner size={48} />
-      </div>
-    );
-  }
-
-  if (!id) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center glass-card p-8 rounded-xl border border-white/10"
-        >
-          <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-xl text-white font-semibold mb-2">
-            No FIR Selected
-          </p>
-          <p className="text-slate-400 mb-6">
-            Please select a FIR from the list to view details.
-          </p>
-          <Button
-            onClick={() => navigate("/police/dashboard")}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
-          </Button>
-        </motion.div>
-      </div>
-    );
-  }
-
-  if (!fir) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center glass-card p-8 rounded-xl border border-white/10"
-        >
-          <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-xl text-white font-semibold mb-2">FIR Not Found</p>
-          <p className="text-slate-400 mb-6">
-            The FIR you're looking for doesn't exist or has been deleted.
-          </p>
-          <Button
-            onClick={() => navigate(-1)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Go Back
-          </Button>
-        </motion.div>
-      </div>
-    );
-  }
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1, delayChildren: 0.1 },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
-  };
-
   // Generate PDF function
   const generateAndDownloadPDF = () => {
+    // FIX: Add null check here to satisfy TypeScript
+    if (!fir) return;
+
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -307,6 +249,9 @@ const FIRDetails = () => {
 
   // Print function
   const handlePrint = () => {
+    // FIX: Add null check here to satisfy TypeScript
+    if (!fir) return;
+
     const printWindow = window.open("", "", "height=600,width=800");
     if (printWindow) {
       printWindow.document.write(`
@@ -335,10 +280,10 @@ const FIRDetails = () => {
             <div class="section">
               <span class="label">Incident Date & Time:</span>
               <span class="value">${
-        fir.incident_date
-          ? new Date(fir.incident_date).toLocaleString("en-IN")
-          : "N/A"
-      }</span>
+                fir.incident_date
+                  ? new Date(fir.incident_date).toLocaleString("en-IN")
+                  : "N/A"
+              }</span>
             </div>
             <div class="section">
               <span class="label">Incident Location:</span>
@@ -368,15 +313,15 @@ const FIRDetails = () => {
             <div class="section">
               <span class="label">Accused Name:</span>
               <span class="value">${
-        fir.accused_name || "Unknown/Not Identified"
-      }</span>
+                fir.accused_name || "Unknown/Not Identified"
+              }</span>
             </div>
             <div class="divider"></div>
             <div class="section">
               <span class="label">Description:</span>
               <div class="value">${
-        fir.description || "No description provided"
-      }</div>
+                fir.description || "No description provided"
+              }</div>
             </div>
             <div class="divider"></div>
             <p style="text-align: center; color: #999; font-size: 12px;">
@@ -388,6 +333,79 @@ const FIRDetails = () => {
       printWindow.document.close();
       printWindow.print();
     }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <LoadingSpinner size={48} />
+      </div>
+    );
+  }
+
+  if (!id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center glass-card p-8 rounded-xl border border-white/10"
+        >
+          <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+          <p className="text-xl text-white font-semibold mb-2">
+            No FIR Selected
+          </p>
+          <p className="text-slate-400 mb-6">
+            Please select a FIR from the list to view details.
+          </p>
+          <Button
+            onClick={() => navigate("/police/dashboard")}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!fir) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center glass-card p-8 rounded-xl border border-white/10"
+        >
+          <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+          <p className="text-xl text-white font-semibold mb-2">FIR Not Found</p>
+          <p className="text-slate-400 mb-6">
+            The FIR you're looking for doesn't exist or has been deleted.
+          </p>
+          <Button
+            onClick={() => navigate(-1)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Go Back
+          </Button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1, delayChildren: 0.1 },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
   };
 
   return (
@@ -598,13 +616,20 @@ const FIRDetails = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {fir.ipfs_cid && (
+            {fir.ipfs_cid ? (
               <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
                 <span className="text-xs text-emerald-400">On Blockchain</span>
               </div>
-            )}
+            ) : null}
             <Button
-              onClick={() => setShowPdfViewer(true)}
+              onClick={() => {
+                if (fir.ipfs_cid) {
+                  // Use CID from FIR table if available
+                  window.open(`https://gateway.pinata.cloud/ipfs/${fir.ipfs_cid}`, '_blank');
+                } else {
+                  setShowPdfViewer(true);
+                }
+              }}
               className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg shadow-red-500/20 flex items-center gap-2"
             >
               <Eye className="w-4 h-4" />
@@ -636,7 +661,7 @@ const FIRDetails = () => {
                 </p>
               </div>
             </div>
-            {fir.blockchain_tx_hash && (
+            {fir.blockchain_tx_hash ? (
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
                   Blockchain Transaction
@@ -645,7 +670,7 @@ const FIRDetails = () => {
                   {fir.blockchain_tx_hash}
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="space-y-4">
@@ -657,7 +682,7 @@ const FIRDetails = () => {
                 {fir.ipfs_cid || "Not uploaded to IPFS"}
               </p>
             </div>
-            {fir.content_hash && (
+            {fir.content_hash ? (
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-1">
                   Content Hash
@@ -666,20 +691,21 @@ const FIRDetails = () => {
                   {fir.content_hash}
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </motion.div>
 
-      {/* Supplementary Reports Section */}
+      {/* Supplementary Reports Section - Only show if FIR is linked to a case */}
+      {caseId && (
       <motion.div
         variants={itemVariants}
         className="glass-card p-8 rounded-xl border border-white/10"
       >
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-lg bg-orange-500/10 text-orange-400">
-              <BookOpen className="w-5 h-5" />
+            <div className="p-3 rounded-lg bg-orange-500/20 text-orange-400">
+              <FileText className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-2xl font-semibold text-white">
@@ -687,13 +713,6 @@ const FIRDetails = () => {
               </h2>
               <p className="text-sm text-slate-400">Additional investigation documents</p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-orange-500/10 border border-orange-500/30 rounded-full">
-              <span className="text-xs text-orange-400">
-                {files.filter(f => f.file_type === 'Supplementary Chargesheet').length} Reports
-              </span>
-            </span>
           </div>
         </div>
 
@@ -704,78 +723,49 @@ const FIRDetails = () => {
               .map((file, index) => (
               <motion.div
                 key={file.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-6 rounded-lg bg-orange-500/10 border border-orange-500/20 hover:border-orange-500/40 transition-all group"
+                variants={itemVariants}
+                className="glass-card p-6 rounded-lg border border-white/5 hover:border-orange-500/20 transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="p-2 rounded-lg bg-orange-500/30">
-                        <BookOpen className="w-4 h-4 text-orange-300" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-orange-200">
-                            Supplementary Chargesheet #{index + 1}
-                          </h3>
-                          <div className="px-2 py-1 bg-orange-500/20 rounded-full">
-                            <span className="text-xs text-orange-300">Official</span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-slate-400">
-                          Filed: {file.uploaded_at
-                            ? new Date(file.uploaded_at).toLocaleDateString("en-IN", {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                            : "N/A"}
-                        </p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-orange-200">
+                        Supplementary Chargesheet #{index + 1}
+                      </h3>
+                      <div className="px-2 py-1 bg-orange-500/20 rounded-full">
+                        <span className="text-xs text-orange-300">Official</span>
                       </div>
                     </div>
-                    {file.notes && (
-                      <div className="mb-3">
-                        <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
-                          Investigation Notes
-                        </p>
-                        <p className="text-sm text-slate-300 p-3 rounded bg-white/5 border border-white/10 leading-relaxed">
-                          {file.notes}
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        Official Document
+                    <p className="text-sm text-slate-400 mb-3">
+                      {file.notes || "No additional notes provided"}
+                    </p>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="text-slate-500">
+                        Type: <span className="text-orange-400 font-medium">Supplementary Chargesheet</span>
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString("en-IN") : "N/A"}
+                      <span className="text-slate-500">
+                        Status: <span className="text-orange-400 font-medium">Filed</span>
                       </span>
                     </div>
                   </div>
-                  <div className="flex gap-2 ml-4">
-                    <a
-                      href={file.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-2 rounded-lg bg-orange-500/20 hover:bg-orange-500/40 text-orange-300 transition-colors"
-                      title="View document"
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(file.file_url, '_blank')}
+                      className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:text-orange-300"
                     >
-                      <Eye className="w-5 h-5" />
-                    </a>
-                    <a
-                      href={file.file_url}
-                      download
-                      className="p-2 rounded-lg bg-orange-500/20 hover:bg-orange-500/40 text-orange-300 transition-colors"
-                      title="Download document"
+                      <Eye className="w-4 h-4 mr-2" />
+                      View
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => window.open(file.file_url, '_blank')}
+                      className="bg-orange-600 hover:bg-orange-700 text-white"
                     >
-                      <Download className="w-5 h-5" />
-                    </a>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download
+                    </Button>
                   </div>
                 </div>
               </motion.div>
@@ -805,8 +795,10 @@ const FIRDetails = () => {
           </div>
         )}
       </motion.div>
+      )}
 
-      {/* Evidence & Proof Section */}
+      {/* Evidence & Proof Section with Toggle - Only show if FIR is linked to a case */}
+      {caseId && (
       <motion.div
         variants={itemVariants}
         className="glass-card p-8 rounded-xl border border-white/10"
@@ -823,131 +815,108 @@ const FIRDetails = () => {
               <p className="text-sm text-slate-400">Supporting evidence and proof materials</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-full">
-              <span className="text-xs text-blue-400">
-                {files.filter(f => f.file_type !== 'Supplementary Chargesheet').length} Files
-              </span>
-            </span>
-          </div>
         </div>
 
-        {files.filter(f => f.file_type !== 'Supplementary Chargesheet').length > 0 ? (
-          <div className="grid gap-4">
-            {files
-              .filter(f => f.file_type !== 'Supplementary Chargesheet')
-              .map((file, index) => (
-              <motion.div
-                key={file.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-6 rounded-lg bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/40 transition-all group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="p-2 rounded-lg bg-blue-500/30">
-                        <Download className="w-4 h-4 text-blue-300" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-blue-200">
-                            {file.file_type || "Evidence Document"}
-                          </h3>
-                          <div className="px-2 py-1 bg-blue-500/20 rounded-full">
-                            <span className="text-xs text-blue-300">Evidence</span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-slate-400">
-                          Added: {file.uploaded_at
-                            ? new Date(file.uploaded_at).toLocaleDateString("en-IN", {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                            : "N/A"}
-                        </p>
-                      </div>
-                    </div>
-                    {file.notes && (
-                      <div className="mb-3">
-                        <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
-                          Evidence Notes
-                        </p>
-                        <p className="text-sm text-slate-300 p-3 rounded bg-white/5 border border-white/10 leading-relaxed">
-                          {file.notes}
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        {file.file_type || "Document"}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString("en-IN") : "N/A"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 ml-4">
-                    <a
-                      href={file.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 transition-colors"
-                      title="View evidence"
-                    >
-                      <Eye className="w-5 h-5" />
-                    </a>
-                    <a
-                      href={file.file_url}
-                      download
-                      className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 transition-colors"
-                      title="Download evidence"
-                    >
-                      <Download className="w-5 h-5" />
-                    </a>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+        {/* Toggle Buttons */}
+        <div className="flex gap-3 mb-6">
+          <Button
+            onClick={() => setEvidenceTab('vault')}
+            className={`px-6 py-2 rounded-lg font-medium transition-all ${
+              evidenceTab === 'vault'
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20'
+                : 'bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10'
+            }`}
+          >
+            Evidence Vault
+          </Button>
+          <Button
+            onClick={() => setEvidenceTab('upload')}
+            className={`px-6 py-2 rounded-lg font-medium transition-all ${
+              evidenceTab === 'upload'
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20'
+                : 'bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10'
+            }`}
+          >
+            Upload Evidence
+          </Button>
+        </div>
+
+        {/* Evidence Vault Tab */}
+        {evidenceTab === 'vault' && caseId && profile ? (
+          <EvidenceVault
+            caseId={caseId}
+            currentUserId={profile.id}
+          />
         ) : (
+          evidenceTab === 'vault' && !caseId && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-8 h-8 text-blue-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                No Associated Case
+              </h3>
+              <p className="text-slate-400">
+                This FIR has not been linked to a case yet. Create a case from this FIR to upload evidence.
+              </p>
+            </div>
+          )
+        )}
+
+        {/* Evidence Uploader Tab */}
+        {evidenceTab === 'upload' && caseId && profile ? (
+          <EvidenceUploader
+            caseId={caseId}
+            uploaderUuid={profile.id}
+            onUploadComplete={() => {
+              // Optional: refresh or show success message
+            }}
+          />
+        ) : (
+          evidenceTab === 'upload' && !caseId && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Upload className="w-8 h-8 text-blue-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                No Associated Case
+              </h3>
+              <p className="text-slate-400">
+                This FIR has not been linked to a case yet. Create a case from this FIR to upload evidence.
+              </p>
+            </div>
+          )
+        )}
+</motion.div>
+      )}
+
+      {/* Show message when FIR is not linked to any case */}
+      {!caseId ? (
+        <motion.div
+          variants={itemVariants}
+          className="glass-card p-8 rounded-xl border border-white/10"
+        >
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Download className="w-8 h-8 text-blue-400" />
+            <div className="w-16 h-16 bg-slate-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-slate-400" />
             </div>
             <h3 className="text-lg font-semibold text-white mb-2">
-              No Evidence Documents
+              Case Not Assigned
             </h3>
-            <p className="text-slate-400 mb-6">
-              No supporting evidence or proof documents have been added yet.
+            <p className="text-slate-400">
+              This FIR has not been assigned to any case yet. Supplementary reports and evidence can only be added after a FIR is linked to a case.
             </p>
-            <Button
-              onClick={() => {
-                setModalCategory("evidence");
-                setShowModal(true);
-              }}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-500/20"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Evidence
-            </Button>
           </div>
-        )}
-      </motion.div>
+        </motion.div>
+      ) : null}
 
-      {showModal && (
+      {showModal && fir && (
         <AddSupplementModal
           firId={fir.id}
-          firNumber={fir.fir_number}
           onClose={() => setShowModal(false)}
           onAdded={handleFileAdded}
           category={modalCategory}
+          uploaderUuid={profile?.id || ""} // Handle possible undefined profile
         />
       )}
 
@@ -1002,7 +971,7 @@ const FIRDetails = () => {
       </motion.div>
 
       {/* PDF Viewer Panel */}
-      {showPdfViewer && (
+      {showPdfViewer && fir && (
         <motion.div
           initial={{ opacity: 0, x: 400 }}
           animate={{ opacity: 1, x: 0 }}

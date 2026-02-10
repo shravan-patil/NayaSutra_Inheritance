@@ -1,31 +1,30 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, Upload, X, Shield } from "lucide-react";
-import { InvestigationFile } from "@/types/case";
-import { uploadInvestigationFile } from "@/services/policeService";
-import { addSupplementaryReport } from "@/utils/BlockChain_Interface/police";
+import { Upload, X } from "lucide-react";
+import { IpfsUpload } from "@/components/cases/IpfsUpload";
+import { supabase } from '@/integrations/supabase/client';
+import { getCaseIdFromFirId } from '@/services/policeService';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { InvestigationFileType } from "@/types/case";
 
 interface Props {
   firId: string;
-  firNumber?: string; // Add FIR number for blockchain
   onClose: () => void;
-  onAdded: (file: InvestigationFile) => void;
+  onAdded?: (file: any) => void;
   category?: "chargesheet" | "evidence";
+  uploaderUuid?: string;
 }
 
 const AddSupplementModal = (
-  { firId, firNumber, onClose, onAdded, category = "evidence" }: Props,
+  { firId, onClose, onAdded, category = "evidence", uploaderUuid }: Props,
 ) => {
   const isChargesheetOnly = category === "chargesheet";
-  const [file, setFile] = useState<File | null>(null);
-  const [type, setType] = useState(
+  const [type, setType] = useState<InvestigationFileType>(
     isChargesheetOnly ? "Supplementary Chargesheet" : "Forensic Report",
   );
   const [notes, setNotes] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [uploadToBlockchain, setUploadToBlockchain] = useState(false);
+  const [triggerUpload, setTriggerUpload] = useState(false);
 
   const chargesheetOptions = ["Supplementary Chargesheet"];
   const evidenceOptions = [
@@ -40,63 +39,83 @@ const AddSupplementModal = (
     : evidenceOptions;
 
   const resetForm = () => {
-    setFile(null);
     setType(
       isChargesheetOnly ? "Supplementary Chargesheet" : "Forensic Report",
     );
     setNotes("");
-    setUploadToBlockchain(false);
+    setTriggerUpload(false);
   };
 
-  // Mock IPFS CID function - replace with actual IPFS upload later
-  const getMockIpfsCid = (): string => {
-    return `Qm${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-  };
-
-  // Mock content hash function - replace with actual content hashing later
-  const getContentHash = (_content: string): string => {
-    // Generate proper 64-character hex string for bytes32 (32 bytes)
-    const hex = Math.random().toString(16).substring(2);
-    return `0x${hex.padEnd(64, '0').substring(0, 64)}`;
-  };
 
   const handleClose = () => {
     resetForm();
     onClose();
   };
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
-    if (!file) {
-      toast.error("Please select a file");
-      return;
-    }
-
-    setLoading(true);
+  const handleIpfsUploadSuccess = async (cid: string, fileName: string) => {
     try {
-      // Step 1: If it's a chargesheet, upload to blockchain first
-      if (isChargesheetOnly && firNumber) {
-        // Mock IPFS upload - replace with actual IPFS implementation
-        const ipfsCid = getMockIpfsCid();
-        const contentHash = getContentHash(`${file.name}-${type}-${notes}`);
-        
-        // Add to blockchain
-        await addSupplementaryReport(firNumber, ipfsCid, contentHash);
+      // Step 1: Get actual case_id from fir_id
+      const caseId = await getCaseIdFromFirId(firId);
+      if (!caseId) {
+        throw new Error("FIR is not linked to any case. Cannot upload supplementary report.");
+      }
+
+      // Step 2: Check for duplicate and save to case_evidence table
+      const { data: existingEvidence, error: checkError } = await supabase
+        .from('case_evidence')
+        .select('id')
+        .eq('case_id', caseId)
+        .eq('cid', cid)
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
       }
       
-      // Step 2: Upload file to regular storage (only after blockchain success)
-      const added = await uploadInvestigationFile(firId, file, type, notes);
-      onAdded(added);
+      if (existingEvidence) {
+        throw new Error("This file has already been uploaded for this case.");
+      }
       
-      toast.success("File uploaded successfully");
+      const { error: evidenceError } = await supabase.from('case_evidence').insert({
+        case_id: caseId,
+        cid: cid,
+        file_name: fileName,
+        category: 'DOCUMENT', // Default category
+        uploaded_by: uploaderUuid || '00000000-0000-0000-0000-000000000000'
+      });
+      
+      console.log("DEBUG: Inserting into case_evidence with case_id:", caseId);
+      console.log("DEBUG: Insert error:", evidenceError);
+
+      if (evidenceError) throw evidenceError;
+
+      // Step 3: Save to investigation_files table (for UI cards) - store complete Pinata URL
+      const pinataUrl = `https://gateway.pinata.cloud/ipfs/${cid}`;
+      const { data: investigationData, error: investigationError } = await supabase.from('investigation_files').insert({
+        file_url: pinataUrl, // Complete Pinata URL (gateway + CID)
+        file_type: type, // Use selected type
+        notes: notes,
+        fir_id: firId
+      }).select().maybeSingle();
+
+      if (investigationError) throw investigationError;
+
+      if (onAdded) {
+        onAdded(investigationData);
+      }
+      
+      toast.success("File uploaded successfully to IPFS");
       resetForm();
       onClose();
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Upload failed");
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTriggerUpload(true); // Trigger upload in IpfsUpload component
   };
 
   return (
@@ -137,15 +156,14 @@ const AddSupplementModal = (
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* File Type Selection */}
+        <form onSubmit={handleFormSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-semibold text-white mb-2">
               Document Type
             </label>
             <select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => setType(e.target.value as InvestigationFileType)}
               className="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white focus:border-emerald-500/50 focus:outline-none transition-colors appearance-none cursor-pointer"
               style={{
                 backgroundImage:
@@ -169,51 +187,18 @@ const AddSupplementModal = (
             )}
           </div>
 
-          {/* File Upload */}
+          {/* IPFS Upload Component */}
           <div>
             <label className="block text-sm font-semibold text-white mb-2">
-              Select File
+              Upload File
             </label>
-            <div className="relative">
-              <input
-                type="file"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="hidden"
-                id="file-upload"
-                disabled={loading}
-              />
-              <label
-                htmlFor="file-upload"
-                className="flex items-center justify-center w-full px-4 py-8 rounded-lg border-2 border-dashed border-white/20 hover:border-emerald-500/30 bg-white/5 hover:bg-white/10 transition-all cursor-pointer group"
-              >
-                <div className="text-center">
-                  <div className="p-3 rounded-lg bg-emerald-500/20 text-emerald-400 mx-auto mb-2 group-hover:bg-emerald-500/30 transition-colors">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  {file
-                    ? (
-                      <div>
-                        <p className="font-semibold text-emerald-300">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-slate-400">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                    )
-                    : (
-                      <div>
-                        <p className="font-semibold text-white">
-                          Click to upload or drag and drop
-                        </p>
-                        <p className="text-sm text-slate-400">
-                          PDF, DOC, DOCX, JPG, PNG up to 50MB
-                        </p>
-                      </div>
-                    )}
-                </div>
-              </label>
-            </div>
+            <IpfsUpload
+              caseId={null} // Don't use caseId for FIR uploads - handle in callback
+              userProfileId={uploaderUuid || ''}
+              evidenceType={type as any} // Cast to any for compatibility
+              triggerUpload={triggerUpload}
+              onUploadSuccess={handleIpfsUploadSuccess}
+            />
           </div>
 
           {/* Notes */}
@@ -227,9 +212,9 @@ const AddSupplementModal = (
               placeholder="Add any relevant notes about this document..."
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none transition-colors resize-none"
               rows={4}
-              disabled={loading}
             />
           </div>
+
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4">
             <Button
@@ -237,28 +222,15 @@ const AddSupplementModal = (
               onClick={handleClose}
               variant="outline"
               className="flex-1 border-white/10 hover:bg-white/5 text-white"
-              disabled={loading}
             >
               Cancel
             </Button>
             <Button
               type="submit"
               className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg shadow-emerald-500/20"
-              disabled={loading || !file}
             >
-              {loading
-                ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                    Uploading...
-                  </>
-                )
-                : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload File
-                  </>
-                )}
+              <Upload className="w-4 h-4 mr-2" />
+              Upload File
             </Button>
           </div>
         </form>

@@ -14,6 +14,7 @@ import { GlassCard } from "@/components/layout/GlassWrapper";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { createCloudinaryFolderViaUpload } from "@/utils/storage/cloudinaryFolderUtils";
 
 import { cn } from "@/lib/utils";
 
@@ -319,6 +320,7 @@ export const RegisterCaseForm = () => {
 
       const supabasePayload = {
         case_number: `CASE-${caseId}`, 
+
         title: data.title,
         case_type: data.caseType,
         party_a_name: data.partyAName,
@@ -341,6 +343,17 @@ export const RegisterCaseForm = () => {
       const { error } = await supabase.from("cases").insert(supabasePayload as any);
 
       if (error) throw error;
+
+      // --- STEP 3: CREATE CLOUDINARY FOLDER ---
+      setLoadingStep("Creating Cloudinary folder...");
+      
+      const folderCreated = await createCloudinaryFolderViaUpload(caseId);
+      if (folderCreated) {
+        console.log(`✅ Cloudinary folder created for case: ${caseId}`);
+      } else {
+        console.warn(`⚠️ Failed to create Cloudinary folder for case: ${caseId}`);
+        // Don't throw error - case creation succeeded, folder creation is optional
+      }
 
       toast.success("Case Registered & Assignments Complete!");
       

@@ -62,7 +62,6 @@ export const ClerkDashboard = () => {
           <TabsTrigger value="register">Register Case</TabsTrigger>
           <TabsTrigger value="cases">My Cases</TabsTrigger>
           <TabsTrigger value="notifications" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Notifications</TabsTrigger>
-
         </TabsList>
 
         <TabsContent value="register">

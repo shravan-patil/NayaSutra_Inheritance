@@ -121,3 +121,27 @@ export const getFIRByNumber = async (firNumber: string): Promise<FIR | null> => 
   if (error) throw error;
   return data as FIR;
 };
+
+/**
+ * Get the Case ID that is linked to a given FIR ID
+ * Returns the case_id of the first case linked to this FIR
+ */
+export const getCaseIdFromFirId = async (firId: string): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('firs')           // Check firs table directly
+      .select('case_id')        // Get case_id column
+      .eq('id', firId)        // Where FIR id matches
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching case ID from FIR:", error);
+      return null;
+    }
+
+    return data?.case_id ?? null;
+  } catch (err) {
+    console.error("Error in getCaseIdFromFirId:", err);
+    return null;
+  }
+};

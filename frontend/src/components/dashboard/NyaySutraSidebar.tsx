@@ -180,9 +180,9 @@ export const NyaySutraSidebar = () => {
           "fixed left-0 top-0 h-screen bg-sidebar-background border-r border-sidebar-border flex flex-col transition-all duration-300 z-50",
           collapsed ? "w-16" : "w-64",
         )}
-        onClick={() => setCollapsed(!collapsed)}
       >
         {/* Logo */}
+        {!collapsed && <div className="mt-14" />}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary">
             <Scale className="h-6 w-6 text-primary-foreground" />
@@ -198,6 +198,8 @@ export const NyaySutraSidebar = () => {
             </div>
           )}
         </div>
+        
+        
 
         {/* Main Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
@@ -221,7 +223,7 @@ export const NyaySutraSidebar = () => {
           variant="ghost"
           size="icon"
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-7 h-6 w-6 rounded-full border bg-background shadow-md hover:bg-muted"
+          className="absolute -right-3 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full border bg-background shadow-md hover:bg-muted"
         >
           {collapsed
             ? <ChevronRight className="h-3 w-3" />

@@ -9,6 +9,7 @@ import {
   User,
   FileText,
   AlertCircle,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GlassCard } from "@/components/layout/GlassWrapper";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { DocumentUploadSection } from "./DocumentUploadSection";
 import { SignatureSection } from "./SignatureSection";
+import { IpfsUpload } from "@/components/cases/IpfsUpload";
+import { EvidenceList } from "@/components/cases/EvidenceList";
 import { 
   clerkReassignJudge, 
   clerkReassignLawyer, 
@@ -628,9 +630,12 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-2 mb-8 bg-white/5 border border-white/10 backdrop-blur-lg">
+        <TabsList className="grid grid-cols-3 mb-8 bg-white/5 border border-white/10 backdrop-blur-lg">
           <TabsTrigger value="documents">
-            <Upload className="w-4 h-4 mr-1 hidden sm:inline" /> Documents
+            <Upload className="w-4 h-4 mr-1 hidden sm:inline" /> IPFS Upload
+          </TabsTrigger>
+          <TabsTrigger value="view">
+            <Eye className="w-4 h-4 mr-1 hidden sm:inline" /> View Evidence
           </TabsTrigger>
           <TabsTrigger value="signatures">
             <Check className="w-4 h-4 mr-1 hidden sm:inline" /> Signatures
@@ -638,7 +643,46 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
         </TabsList>
 
         <TabsContent value="documents">
-          <DocumentUploadSection caseId={caseData.id} />
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600">
+                <Upload className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">IPFS Evidence Upload</h3>
+                <p className="text-slate-400 text-sm">Upload case evidence to IPFS storage</p>
+              </div>
+            </div>
+            
+            <IpfsUpload 
+              caseId={caseData.id}
+              userProfileId={caseData.assigned_judge_id || caseData.lawyer_party_a_id || caseData.lawyer_party_b_id || ''}
+              evidenceType="general_evidence"
+              onUploadSuccess={(cid, fileName) => {
+                toast.success(`Evidence uploaded: ${fileName}`);
+                console.log(`Evidence uploaded with CID: ${cid}`);
+              }}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="view">
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-blue-600 to-cyan-600">
+                <Eye className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">View Evidence</h3>
+                <p className="text-slate-400 text-sm">Review all uploaded evidence for this case</p>
+              </div>
+            </div>
+            
+            <EvidenceList 
+              caseId={caseData.id}
+              evidenceType="all"
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="signatures">
