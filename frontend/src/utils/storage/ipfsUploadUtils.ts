@@ -12,6 +12,13 @@ export interface IpfsUploadResponse {
   timestamp: string;
 }
 
+export interface JsonUploadResponse {
+  cid: string;
+  ipfsUrl: string;
+  name: string;
+  timestamp: string;
+}
+
 // These match the 'evidence_file_type' Enum in your Supabase Database
 export const EVIDENCE_TYPES = {
   DOCUMENT: 'DOCUMENT',
@@ -40,10 +47,12 @@ export const uploadToPinata = async (file: File, caseId: string): Promise<IpfsUp
 
   // 2. Add Metadata (Optional but recommended for your Dashboard organization)
   // This does NOT create a second CID. It just names the file in the Pinata UI.
+  // Ensure caseId is a valid string for Pinata metadata
+  const safeCaseId = caseId && typeof caseId === 'string' ? caseId : 'unknown';
   const metadata = JSON.stringify({
-    name: `${caseId}_${file.name}`, // Example: "CASE-123_evidence.pdf"
+    name: `${safeCaseId}_${file.name}`, // Example: "CASE-123_evidence.pdf"
     keyvalues: {
-      caseId: caseId,
+      caseId: safeCaseId,
       uploadDate: new Date().toISOString()
     }
   });
@@ -131,4 +140,83 @@ export const validateFile = (file: File) => {
     throw new Error(`File is too large. Maximum allowed size is ${MAX_MB}MB.`);
   }
   return true;
+};
+
+/**
+ * 5. Uploads a JSON object to Pinata (IPFS)
+ * @param jsonData - The JSON object to upload
+ * @param name - The name for the file in Pinata
+ * @param metadata - Optional metadata keyvalues
+ */
+export const uploadJsonToPinata = async (
+  jsonData: object,
+  name: string,
+  metadata?: Record<string, string>
+): Promise<JsonUploadResponse> => {
+  if (!PINATA_JWT) {
+    throw new Error("Pinata JWT is missing. Check VITE_PINATA_JWT in .env.local");
+  }
+
+  try {
+    const res = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PINATA_JWT}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        pinataContent: jsonData,
+        pinataMetadata: {
+          name: name,
+          keyvalues: {
+            type: "session_finalization",
+            timestamp: new Date().toISOString(),
+            ...metadata,
+          },
+        },
+        pinataOptions: {
+          cidVersion: 1,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      console.error("Pinata JSON Upload Error:", errorData);
+      throw new Error(`Pinata JSON Upload Failed: ${JSON.stringify(errorData.error || errorData.message || errorData)}`);
+    }
+
+    const data = await res.json();
+
+    return {
+      cid: data.IpfsHash,
+      ipfsUrl: resolveIpfsUrl(data.IpfsHash),
+      name: name,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("IPFS JSON Upload Error:", error);
+    throw error;
+  }
+};
+
+/**
+ * 6. Fetches and parses JSON from IPFS
+ * @param cid - The IPFS CID to fetch
+ */
+export const fetchJsonFromIpfs = async <T = unknown>(cid: string): Promise<T> => {
+  try {
+    const url = resolveIpfsUrl(cid);
+    const res = await fetch(url);
+    
+    if (!res.ok) {
+      throw new Error(`Failed to fetch from IPFS: ${res.statusText}`);
+    }
+    
+    const data = await res.json();
+    return data as T;
+  } catch (error) {
+    console.error("Error fetching JSON from IPFS:", error);
+    throw error;
+  }
 };

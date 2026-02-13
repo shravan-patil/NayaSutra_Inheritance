@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client'; // Adjust path if your supabase client is elsewhere
 import { 
-  uploadToPinata, 
+  uploadToCloudinary, 
   getEvidenceType, 
   validateFile 
-} from '@/utils/storage/ipfsUploadUtils';
+} from '@/utils/storage/stagingUploadUtils'; // Ensure this matches your util filename
 
 // Icons (Lucide React)
-import { UploadCloud, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { UploadCloud, FileType, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
 interface EvidenceUploaderProps {
   caseId: string;       // Passed from the URL (The specific case folder)
   uploaderUuid: string; // The logged-in user's ID
+  uploaderRole: 'POLICE' | 'LAWYER'; 
   onUploadComplete?: () => void; // Optional: To refresh a list after upload
 }
 
 export const EvidenceUploader = ({ 
   caseId, 
-  uploaderUuid,
+  uploaderUuid, 
+  uploaderRole,
   onUploadComplete 
 }: EvidenceUploaderProps) => {
   const [isUploading, setIsUploading] = useState(false);
@@ -40,20 +42,21 @@ export const EvidenceUploader = ({
       // 3. Detect Evidence Type (VIDEO, IMAGE, DOCUMENT, etc.)
       const fileType = getEvidenceType(file);
 
-      setStatusMessage("Uploading to IPFS...");
+      setStatusMessage("Uploading to Secure Cloud...");
 
-      // 4. Upload to Pinata IPFS
-      const ipfsResult = await uploadToPinata(file, caseId);
+      // 4. Upload to Cloudinary (Dynamic Folder: staging_evidence/{caseId})
+      const { secure_url } = await uploadToCloudinary(file, caseId);
 
       setStatusMessage("Saving to Case Record...");
 
-      // 5. Save Metadata to Supabase case_evidence Table
-      const { error } = await supabase.from('case_evidence').insert({
+      // 5. Save Metadata to Supabase Staging Table
+      const { error } = await supabase.from('staging_evidence').insert({
         case_id: caseId,
-        cid: ipfsResult.cid,
-        file_name: ipfsResult.fileName,
-        category: fileType,
-        uploaded_by: uploaderUuid
+        uploader_uuid: uploaderUuid,
+        uploader_role: uploaderRole,
+        file_url: secure_url,
+        file_type: fileType,       // 'VIDEO', 'IMAGE', etc.
+        evidence_status: 'PENDING'
       });
 
       if (error) throw error;
@@ -125,7 +128,7 @@ export const EvidenceUploader = ({
       {/* Helper Text below box */}
       {statusType === 'success' && (
         <p className="text-center text-green-600 text-sm mt-3 font-medium">
-          Evidence has been uploaded to IPFS successfully.
+          Evidence has been staged successfully.
         </p>
       )}
     </div>

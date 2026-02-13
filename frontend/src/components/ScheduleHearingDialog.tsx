@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { AlertCircle, Calendar, CheckCircle2, Clock, Info } from "lucide-react";
 import {
@@ -16,6 +15,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { judgeScheduleHearing } from "@/utils/BlockChain_Interface/judge";
+import { createSessionLog } from "@/services/sessionService";
 
 interface ScheduleHearingDialogProps {
   open: boolean;
@@ -32,15 +33,35 @@ export function ScheduleHearingDialog({
   caseNumber,
   onSuccess,
 }: ScheduleHearingDialogProps) {
-  const navigate = useNavigate();
   const { profile } = useAuth();
   const [hearingDate, setHearingDate] = useState("");
   const [hearingTime, setHearingTime] = useState("10:00");
   const [location, setLocation] = useState("Court Room 1");
   const [notes, setNotes] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isBlockchainLoading, setIsBlockchainLoading] = useState(false);
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [checkingConflicts, setCheckingConflicts] = useState(false);
+
+  // Check wallet connection on mount
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      if (typeof window !== 'undefined' && window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' }) as string[];
+          setIsWalletConnected(accounts && accounts.length > 0);
+        } catch (error) {
+          console.error("Error checking wallet connection:", error);
+          setIsWalletConnected(false);
+        }
+      } else {
+        setIsWalletConnected(false);
+      }
+    };
+
+    checkWalletConnection();
+  }, []);
 
   // Check for scheduling conflicts
   const checkConflicts = async () => {
@@ -93,8 +114,23 @@ export function ScheduleHearingDialog({
       // Format: YYYY-MM-DDTHH:mm:00 (stored as IST in database)
       const localDateTime = `${dateStr}T${hearingTime}:00`;
 
-      // Update case's next_hearing_date with IST
-      const { error } = await supabase
+      // Convert to Unix timestamp for blockchain
+      const scheduledDate = new Date(`${dateStr}T${hearingTime}:00+05:30`).getTime() / 1000;
+
+      // 1. Create session log entry in database using service
+      const sessionLog = await createSessionLog(
+        caseId,
+        profile.id,
+        localDateTime,
+        notes || `Hearing scheduled for ${location}`
+      );
+
+      if (!sessionLog) {
+        throw new Error("Failed to create session log");
+      }
+
+      // 2. Update case's next_hearing_date with IST
+      const { error: caseError } = await supabase
         .from("cases")
         .update({
           next_hearing_date: localDateTime, // Store as local IST time (format: YYYY-MM-DDTHH:mm:00)
@@ -102,9 +138,74 @@ export function ScheduleHearingDialog({
         })
         .eq("id", caseId);
 
-      if (error) throw error;
+      if (caseError) throw caseError;
 
-      toast.success("Hearing scheduled successfully");
+      // 3. Schedule on blockchain with verification
+      let blockchainSuccess = false;
+      let blockchainHash = null;
+      
+      setIsBlockchainLoading(true);
+      
+      try {
+        console.log("🔗 Attempting to schedule session on blockchain...");
+        console.log("Case ID:", caseId);
+        console.log("Scheduled Date (Unix):", scheduledDate);
+        console.log("Description:", notes || `Hearing at ${location} on ${format(parseISO(hearingDate), "MMM d, yyyy")} at ${hearingTime}`);
+        
+        const blockchainReceipt = await judgeScheduleHearing(
+          caseId,
+          scheduledDate,
+          notes || `Hearing at ${location} on ${format(parseISO(hearingDate), "MMM d, yyyy")} at ${hearingTime}`
+        );
+        
+        if (blockchainReceipt && blockchainReceipt.hash) {
+          blockchainSuccess = true;
+          blockchainHash = blockchainReceipt.hash;
+          console.log("✅ Session scheduled on blockchain:", blockchainReceipt.hash);
+          console.log("Block number:", blockchainReceipt.blockNumber);
+          console.log("Gas used:", blockchainReceipt.gasUsed?.toString());
+        } else {
+          console.warn("⚠️ Blockchain transaction returned null or invalid receipt");
+        }
+      } catch (blockchainError) {
+        console.error("❌ Blockchain scheduling failed:", blockchainError);
+        
+        // Check for specific error types
+        if (blockchainError instanceof Error) {
+          if (blockchainError.message.includes("wallet")) {
+            toast.error("Blockchain scheduling failed: Wallet not connected. Please connect your wallet.");
+          } else if (blockchainError.message.includes("insufficient funds")) {
+            toast.error("Blockchain scheduling failed: Insufficient funds for gas fees.");
+          } else if (blockchainError.message.includes("rejected")) {
+            toast.error("Blockchain scheduling failed: Transaction rejected by user.");
+          } else {
+            toast.error(`Blockchain scheduling failed: ${blockchainError.message}`);
+          }
+        } else {
+          toast.error("Blockchain scheduling failed: Unknown error occurred.");
+        }
+      } finally {
+        setIsBlockchainLoading(false);
+      }
+
+      // 4. Show appropriate success message based on blockchain status
+      if (blockchainSuccess && blockchainHash) {
+        toast.success(
+          <div>
+            <div className="font-semibold">✅ Hearing scheduled successfully!</div>
+            <div className="text-xs mt-1">Database + Blockchain</div>
+            <div className="text-xs opacity-70">TX: {blockchainHash.slice(0, 10)}...{blockchainHash.slice(-8)}</div>
+          </div>
+        );
+      } else {
+        toast.success(
+          <div>
+            <div className="font-semibold">✅ Hearing scheduled successfully!</div>
+            <div className="text-xs mt-1">Database only (Blockchain failed)</div>
+          </div>
+        );
+      }
+
       onOpenChange(false);
       setHearingDate("");
       setHearingTime("10:00");
@@ -137,6 +238,21 @@ export function ScheduleHearingDialog({
         </DialogHeader>
 
         <div className="space-y-4 max-h-[60vh] overflow-y-auto py-4">
+          {/* Blockchain Wallet Status */}
+          <Alert className={isWalletConnected ? "bg-emerald-500/10 border-emerald-500/30" : "bg-amber-500/10 border-amber-500/30"}>
+            <Info className={`h-4 w-4 ${isWalletConnected ? "text-emerald-400" : "text-amber-400"}`} />
+            <AlertDescription className={isWalletConnected ? "text-emerald-400" : "text-amber-400"}>
+              <div className="font-semibold mb-1">
+                Blockchain Wallet: {isWalletConnected ? "✅ Connected" : "⚠️ Not Connected"}
+              </div>
+              <div className="text-xs">
+                {isWalletConnected 
+                  ? "Session will be scheduled on both database and blockchain." 
+                  : "Connect your wallet to enable blockchain scheduling. Database only will be used."}
+              </div>
+            </AlertDescription>
+          </Alert>
+
           {/* Timezone Info */}
           <Alert className="bg-blue-500/10 border-blue-500/30">
             <Info className="h-4 w-4 text-blue-400" />
@@ -255,6 +371,17 @@ export function ScheduleHearingDialog({
             </Alert>
           )}
 
+          {/* Blockchain Status */}
+          {isBlockchainLoading && (
+            <Alert className="bg-orange-500/10 border-orange-500/30">
+              <Clock className="h-4 w-4 text-orange-400 animate-spin" />
+              <AlertDescription className="text-orange-400">
+                <div className="font-semibold mb-1">Processing Blockchain Transaction</div>
+                <div className="text-xs">Please wait while we schedule the session on the blockchain...</div>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Summary */}
           {hearingDate && hearingTime && (
             <div className="bg-muted/40 p-3 rounded-lg border border-border/30">
@@ -287,14 +414,14 @@ export function ScheduleHearingDialog({
           </Button>
           <Button
             onClick={handleSchedule}
-            disabled={isLoading || !hearingDate || !hearingTime || hasConflicts}
+            disabled={isLoading || isBlockchainLoading || !hearingDate || !hearingTime || hasConflicts}
             className="gap-2"
           >
-            {isLoading
+            {isLoading || isBlockchainLoading
               ? (
                 <>
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Scheduling...
+                  {isBlockchainLoading ? "Processing Blockchain..." : "Scheduling..."}
                 </>
               )
               : (

@@ -23,27 +23,18 @@ const COURT_ADDR = import.meta.env.VITE_COURT_ADDR || "";
 
 
 const JUDGE_ABI = [
-
     // Writes
-
-    "function scheduleSession(uint256 _caseId, uint256 _date, string _desc) external",
-
-    "function startSession(uint256 _caseId) external",
-
-    "function endSession(uint256 _caseId, string _ipfsCid, bool _isAdjourned) external",
-
-    "function setCaseStatus(uint256 _caseId, uint8 _status) external",
-
-
+    "function scheduleSession(string _caseId, uint256 _date, string _desc) external",
+    "function finalizeSession(string _caseId, string _ipfsCid, bool _isAdjourned, uint256 _startTimestamp, uint256 _endTimestamp) external",
+    "function addProofLink(string _caseId, string _proofLink) external",
+    "function setCaseStatus(string _caseId, uint8 _status) external",
+    "function updateNextSessionState(string _caseId, uint256 _sessionId, uint256 _newDate, string _description) external",
 
     // Reads
-
-    "function getNextSessionDetails(uint256 _caseId) view returns (tuple(uint256 sessionId, uint256 scheduledDate, string description, bool isConcluded))",
-
-    "function getSessionDetails(uint256 _caseId, uint256 _sessionId) view returns (tuple(uint256 caseId, uint256 sessionId, string ipfsCid, bool isAdjourned, uint256 startTimestamp, uint256 endTimestamp))",
-
-    "function getCaseSigners(uint256 _caseId) view returns (address clerk, address judge, address defence, address prosecution)"
-
+    "function getNextSessionDetails(string _caseId) view returns (tuple(uint256 sessionId, uint256 scheduledDate, string description, bool isConcluded))",
+    "function getSessionDetails(string _caseId, uint256 _sessionId) view returns (tuple(string caseId, uint256 sessionId, string ipfsCid, bool isAdjourned, uint256 startTimestamp, uint256 endTimestamp))",
+    "function getCaseSigners(string _caseId) view returns (address clerk, address judge, address defence, address prosecution)",
+    "function getCaseProofLinks(string _caseId) view returns (string[] memory)"
 ];
 
 
@@ -85,15 +76,19 @@ export interface CaseParticipants {
 // --- Internal Helper ---
 
 const getJudgeContract = async (): Promise<ethers.Contract> => {
-
     if (!window.ethereum) throw new Error("Wallet not found");
+    
+    // Validate contract address is configured
+    if (!COURT_ADDR || COURT_ADDR === "") {
+        throw new Error(
+            "VITE_COURT_ADDR is not configured. " +
+            "Please set the deployed contract address in your .env.local file"
+        );
+    }
 
     const provider = new ethers.BrowserProvider(window.ethereum);
-
     const signer = await provider.getSigner();
-
     return new ethers.Contract(COURT_ADDR, JUDGE_ABI, signer);
-
 };
 
 
@@ -122,65 +117,15 @@ export const judgeScheduleHearing = async (
 
     console.log(`Scheduling Case #${caseId} for ${new Date(unixTimestamp * 1000).toLocaleString()}`);
 
-
-
     const tx = await contract.scheduleSession(
 
-        BigInt(caseId),
+        caseId.toString(),
 
         BigInt(unixTimestamp),
 
         description
 
     );
-
-    console.log("Tx Sent:", tx.hash);
-
-    return await tx.wait();
-
-};
-
-
-
-/**
-
- * Starts a scheduled hearing (Generates Start Timestamp)
-
- */
-
-export const judgeStartHearing = async (caseId: string | number): Promise<ethers.ContractTransactionReceipt | null> => {
-
-    const contract = await getJudgeContract();
-
-    const tx = await contract.startSession(BigInt(caseId));
-
-    console.log("Tx Sent:", tx.hash);
-
-    return await tx.wait();
-
-};
-
-
-
-/**
-
- * Ends a hearing and records the session log (IPFS CID)
-
- */
-
-export const judgeEndHearing = async (
-
-    caseId: string | number, 
-
-    ipfsCid: string, 
-
-    isAdjourned: boolean
-
-): Promise<ethers.ContractTransactionReceipt | null> => {
-
-    const contract = await getJudgeContract();
-
-    const tx = await contract.endSession(BigInt(caseId), ipfsCid, isAdjourned);
 
     console.log("Tx Sent:", tx.hash);
 
@@ -206,7 +151,7 @@ export const getSessionRecord = async (caseId: string | number, sessionId: strin
 
     // Ethers v6 returns a Result object (array-like) for structs
 
-    const s = await contract.getSessionDetails(BigInt(caseId), BigInt(sessionId));
+    const s = await contract.getSessionDetails(caseId.toString(), BigInt(sessionId));
 
 
 
@@ -252,7 +197,7 @@ export const getCaseParticipants = async (caseId: string | number): Promise<Case
 
     // Destructure Result object from getCaseSigners
 
-    const signers = await contract.getCaseSigners(BigInt(caseId));
+    const signers = await contract.getCaseSigners(caseId.toString());
 
 
 
@@ -268,4 +213,88 @@ export const getCaseParticipants = async (caseId: string | number): Promise<Case
 
     };
 
+};
+
+
+
+/**
+ * Updates the state of the next session for a case
+ */
+export const judgeUpdateNextSession = async (
+    caseId: string | number,
+    sessionId: string | number,
+    unixTimestamp: number,
+    description: string
+): Promise<ethers.ContractTransactionReceipt | null> => {
+    const contract = await getJudgeContract();
+    
+    console.log(`Updating next session for Case #${caseId}, Session #${sessionId} to ${new Date(unixTimestamp * 1000).toLocaleString()}`);
+    
+    const tx = await contract.updateNextSessionState(
+        caseId.toString(),
+        BigInt(sessionId),
+        BigInt(unixTimestamp),
+        description
+    );
+    
+    console.log("Tx Sent:", tx.hash);
+    return await tx.wait();
+};
+
+/**
+ * Finalizes a session in a single transaction (merges start and end)
+ * Frontend provides timestamps and IPFS CID with all session data
+ */
+export const judgeFinalizeSession = async (
+    caseId: string | number,
+    ipfsCid: string,
+    isAdjourned: boolean,
+    startTimestamp: number,
+    endTimestamp: number
+): Promise<ethers.ContractTransactionReceipt | null> => {
+    const contract = await getJudgeContract();
+    
+    console.log(`Finalizing session for Case #${caseId}`);
+    console.log(`CID: ${ipfsCid}, Start: ${new Date(startTimestamp * 1000).toLocaleString()}, End: ${new Date(endTimestamp * 1000).toLocaleString()}`);
+    
+    const tx = await contract.finalizeSession(
+        caseId.toString(),
+        ipfsCid,
+        isAdjourned,
+        BigInt(startTimestamp),
+        BigInt(endTimestamp)
+    );
+    
+    console.log("Tx Sent:", tx.hash);
+    return await tx.wait();
+};
+
+/**
+ * Adds a proof link (IPFS CID) to the case on blockchain
+ * Called when evidence is accepted in the review vault
+ */
+export const judgeAddProofLink = async (
+    caseId: string | number,
+    proofLink: string
+): Promise<ethers.ContractTransactionReceipt | null> => {
+    const contract = await getJudgeContract();
+    
+    console.log(`Adding proof link for Case #${caseId}: ${proofLink}`);
+    
+    const tx = await contract.addProofLink(
+        caseId.toString(),
+        proofLink
+    );
+    
+    console.log("Tx Sent:", tx.hash);
+    return await tx.wait();
+};
+
+/**
+ * Fetches all proof links for a case
+ */
+export const getCaseProofLinks = async (caseId: string | number): Promise<string[]> => {
+    const contract = await getJudgeContract();
+    const links = await contract.getCaseProofLinks(caseId.toString());
+    return links;
 };

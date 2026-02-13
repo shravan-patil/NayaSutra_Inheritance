@@ -19,7 +19,6 @@ import { Header } from "@/components/layout/Header";
 import { PoliceProtectedRoute, ProfileProtectedRoute } from "@/components/RoleBasedRoute";
 import { AuthValidator } from "@/components/AuthValidator";
 import LawyerNotifications from "./pages/LawyerNotifications";
-
 // Pages
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
@@ -27,7 +26,7 @@ import Dashboard from "./pages/Dashboard";
 import Courts from "./pages/Courts";
 import Sections from "./pages/Sections";
 import CaseBlocks from "./pages/CaseBlocks";
-import CaseDetails from "./pages/CaseDetails";
+import CaseDetails  from "./pages/CaseDetails";
 import CauseList from "./pages/CauseList";
 import JudgmentWriter from "./pages/JudgmentWriter";
 import EvidenceVault from "./pages/EvidenceVault";

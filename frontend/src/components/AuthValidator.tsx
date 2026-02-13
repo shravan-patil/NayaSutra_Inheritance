@@ -48,7 +48,14 @@ export const AuthValidator = ({ children }: { children: React.ReactNode }) => {
             return;
           }
         }
-
+        if (location.pathname.startsWith('/cases')||location.pathname.startsWith("/court")) {
+          const validPoliceRoles = ['judge', 'lawyer'];
+          if (!validPoliceRoles.includes(profileData.role_category)) {
+            toast.error("Access denied. Judge role required.");
+            navigate('/');
+            return;
+          }
+        }
       } catch (err) {
         console.error('Auth validation error:', err);
         toast.error("Authentication validation failed. Please login again.");

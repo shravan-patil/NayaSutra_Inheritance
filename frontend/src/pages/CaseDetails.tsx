@@ -53,6 +53,10 @@ import { motion } from "framer-motion";
 import { ReviewVault } from "@/components/dashboard/judge/ReviewVault";
 import { EvidenceList } from "@/components/cases/EvidenceList";
 import { ScheduleHearingDialog } from "@/components/ScheduleHearingDialog";
+import { PastSessionsList, SessionItem } from "@/components/cases/PastSessionsList";
+import { SessionDetailsModal } from "@/components/cases/SessionDetailsModal";
+import { finalizeAndUploadSession } from "@/services/sessionFinalizationService";
+import { judgeFinalizeSession } from "@/utils/BlockChain_Interface/judge";
 
 // --- NEW IMPORTS ---
 import { EvidenceUploader } from "@/components/cases/EvidenceUploader";
@@ -155,9 +159,20 @@ const CaseDetails = () => {
       if (sessionError) throw sessionError;
 
       toast.success('Session closed successfully');
-      setSessionEnded(false);
-      await courtSession.refreshSession();
+      
+      // Clear the selected notification and close modal
+      setSelectedNotification(null);
       setShowJudgeModal(false);
+      
+      // Reset signing status
+      setSigningStatus([]);
+      setAllPartiesSigned(false);
+      
+      // Refresh court session to clear active session state
+      await courtSession.refreshSession();
+      
+      // Refresh PastSessionsList to show the newly closed session
+      setSessionsRefreshTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Error closing session:', error);
       toast.error('Failed to close session');
@@ -223,6 +238,8 @@ const CaseDetails = () => {
     confirmed_by?: string | null;
     requires_confirmation?: boolean;
     user_id: string;
+    session_id?: string;
+    case_id?: string;
     type?: string;
     metadata?: any;
     signature?: string | null;
@@ -232,6 +249,13 @@ const CaseDetails = () => {
   const [signingStatus, setSigningStatus] = useState<any[]>([]);
   const [allPartiesSigned, setAllPartiesSigned] = useState(false);
   const [sessionEnded, setSessionEnded] = useState(false); // Track if session has ended
+
+  // Session Details Modal state
+  const [selectedSession, setSelectedSession] = useState<SessionItem | null>(null);
+  const [showSessionDetailsModal, setShowSessionDetailsModal] = useState(false);
+
+  // Refresh trigger for PastSessionsList
+  const [sessionsRefreshTrigger, setSessionsRefreshTrigger] = useState(0);
 
   const refreshSigningStatus = async (sessionId: string) => {
     if (!caseData) return;
@@ -337,6 +361,8 @@ const CaseDetails = () => {
               confirmed_by: notification.confirmed_by,
               requires_confirmation: (notification as any).requires_confirmation ?? undefined,
               user_id: notification.user_id,
+              session_id: (notification.metadata as any)?.sessionId || notification.session_id || pausedSession.id,
+              case_id: notification.case_id || caseData.id,
               metadata: {
                 ...(((notification.metadata && typeof notification.metadata === 'object') ? notification.metadata : {}) as any),
                 caseId: (notification.metadata as any)?.caseId || notification.case_id || caseData.id,
@@ -512,7 +538,11 @@ const CaseDetails = () => {
 
   const handleEndSession = async () => {
     if (!courtSession.isSessionActive || !profile || !caseData) return;
-
+    const response = await supabase.from("session_logs").select("judge_verdict_cid,transcript_cid").eq("id",courtSession.activeSession?.id||"").maybeSingle()
+    if(!response?.data?.judge_verdict_cid || !response?.data?.transcript_cid){
+      toast.error("Please upload judge verdict and transcript before ending the session");
+      return;
+    }
     const confirmed = window.confirm(
       "End the court session? This will:\n\n1. Send notifications to all case participants (clerk + lawyers)\n2. Request confirmations from all participants\n3. Enable blockchain signing after all confirmations\n\nContinue?",
     );
@@ -558,11 +588,12 @@ const CaseDetails = () => {
             is_read: false,
             created_at: new Date().toISOString(),
             requires_confirmation: true,
-            caseId: caseData.id,
-            sessionId: courtSession.activeSession?.id || '',
+            session_id: courtSession.activeSession?.id || '',
+            case_id: caseData.id,
             user_id: profile.id,
             metadata: {
               sessionId: courtSession.activeSession?.id || '',
+              caseId: caseData.id,
               caseNumber: caseData.case_number,
               endedAt: new Date().toISOString(),
               notes: sessionNotes || undefined,
@@ -622,12 +653,12 @@ const CaseDetails = () => {
         await connect();
       }
 
-      const caseId = selectedNotification.metadata?.caseId;
+      const caseIdForFinalization = selectedNotification.metadata?.caseId;
       const confirmedAt = new Date().toISOString();
 
       const message = [
         'NyaySutra Court Session Finalization (Judge Signature)',
-        `caseId: ${caseId || 'N/A'}`,
+        `caseId: ${caseIdForFinalization || 'N/A'}`,
         `sessionId: ${sessionId}`,
         `judgeUserId: ${profile.id}`,
         `timestamp: ${confirmedAt}`,
@@ -638,6 +669,8 @@ const CaseDetails = () => {
         toast.error('Signature was not collected from MetaMask');
         return;
       }
+
+      toast.info('Starting session finalization...');
 
       // Persist judge signature on the judge's OWN notification row for this session
       const { error } = await supabase
@@ -662,6 +695,69 @@ const CaseDetails = () => {
       } : null);
 
       toast.success('Judge signed successfully!');
+      toast.info('Preparing finalization data...');
+
+      // After judge signs, finalize the session and upload to IPFS
+      // This captures all session data, evidence CIDs, and signatures
+      const caseNumber = selectedNotification.metadata?.caseNumber || caseData?.case_number || 'Unknown';
+      
+      if (caseIdForFinalization && sessionId) {
+        toast.info('Uploading finalization data to IPFS...');
+        const { success, cid } = await finalizeAndUploadSession(
+          sessionId,
+          caseIdForFinalization,
+          caseNumber,
+          profile.id
+        );
+        
+        if (success && cid) {
+          toast.success('Session finalized and stored on IPFS', {
+            description: `Finalization CID: ${cid.slice(0, 20)}...${cid.slice(-8)}`,
+          });
+          
+          // Now call the blockchain to record the session
+          toast.info('Recording session on blockchain...');
+          try {
+            // Get session timestamps from the database
+            const { data: sessionData } = await supabase
+              .from('session_logs')
+              .select('started_at, ended_at')
+              .eq('id', sessionId)
+              .maybeSingle();
+            
+            if (sessionData) {
+              const startTimestamp = Math.floor(new Date(sessionData.started_at).getTime() / 1000);
+              const endTimestamp = Math.floor(new Date(sessionData.ended_at || new Date()).getTime() / 1000);
+              
+              // Call blockchain - case_number is the caseId in the contract
+              const receipt = await judgeFinalizeSession(
+                caseNumber, // This is the caseId in the blockchain
+                cid,
+                false, // isAdjourned - set to false for now
+                startTimestamp,
+                endTimestamp
+              );
+              
+              if (receipt) {
+                toast.success('Session recorded on blockchain', {
+                  description: `Tx: ${receipt.hash.slice(0, 20)}...`,
+                });
+              }
+            }
+          } catch (blockchainError) {
+            console.error('Blockchain recording failed:', blockchainError);
+            toast.error('Session finalized on IPFS but blockchain recording failed');
+          }
+          
+          // Refresh the past sessions list to show the finalized session
+          setSessionsRefreshTrigger(prev => prev + 1);
+        } else {
+          toast.error('Failed to upload finalization data to IPFS');
+        }
+      } else {
+        toast.error('Missing case ID or session ID for finalization');
+        console.error('Missing data:', { caseIdForFinalization, sessionId });
+      }
 
       // Refresh status so reopening shows correct values
       await refreshSigningStatus(sessionId);
@@ -717,6 +813,8 @@ const CaseDetails = () => {
           confirmed_by: notification.confirmed_by,
           requires_confirmation: (notification as any).requires_confirmation ?? undefined,
           user_id: notification.user_id,
+          session_id: (notification.metadata as any)?.sessionId || notification.session_id,
+          case_id: notification.case_id || caseData.id,
           metadata: {
             ...(((notification.metadata && typeof notification.metadata === 'object') ? notification.metadata : {}) as any),
             caseId: (notification.metadata as any)?.caseId || notification.case_id || caseData.id,
@@ -875,7 +973,7 @@ const CaseDetails = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {isJudge && caseData.status !== 'closed' && !courtSession.isSessionActive && !sessionEnded && (
+          {isJudge && caseData.status !== 'closed' && !courtSession.isSessionActive && (!sessionEnded || !selectedNotification) && (
             <>
               <Button
                 onClick={handleStartSession}
@@ -886,7 +984,7 @@ const CaseDetails = () => {
               </Button>
             </>
           )}
-          {isJudge && caseData.status !== 'closed' && sessionEnded && !courtSession.isSessionActive && (
+          {isJudge && caseData.status !== 'closed' && sessionEnded && !courtSession.isSessionActive && selectedNotification && (
             <>
               <Button
                 onClick={handleSignStatusClick}
@@ -897,7 +995,7 @@ const CaseDetails = () => {
               </Button>
             </>
           )}
-          {isJudge && caseData.status !== 'closed' && courtSession.isSessionActive && !sessionEnded && (
+          {isJudge && caseData.status !== 'closed' && courtSession.isSessionActive && (
             <>
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -1095,7 +1193,7 @@ const CaseDetails = () => {
                    <EvidenceUploader 
                       caseId={id || ""} 
                       uploaderUuid={profile.id} 
-                      // uploaderRole={'LAWYER'} 
+                      uploaderRole='LAWYER' 
                       onUploadComplete={() => {
                         toast.success("List refreshed");
                         // You could trigger a re-fetch of the vault here if they share state
@@ -1381,6 +1479,18 @@ const CaseDetails = () => {
             )}
           </Tabs>
 
+          {/* Past Sessions Section */}
+          {caseData?.id && (
+            <PastSessionsList
+              caseId={caseData.id}
+              onSessionClick={(session) => {
+                setSelectedSession(session);
+                setShowSessionDetailsModal(true);
+              }}
+              refreshTrigger={sessionsRefreshTrigger}
+            />
+          )}
+
           {/* Timestamps */}
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>
@@ -1422,6 +1532,17 @@ const CaseDetails = () => {
         signingStatus={signingStatus}
         isJudge={isJudge}
         allPartiesSigned={allPartiesSigned}
+      />
+
+      {/* Session Details Modal */}
+      <SessionDetailsModal
+        session={selectedSession}
+        isOpen={showSessionDetailsModal}
+        onClose={() => {
+          setShowSessionDetailsModal(false);
+          setSelectedSession(null);
+        }}
+        caseNumber={caseData?.case_number}
       />
     </div>
   );

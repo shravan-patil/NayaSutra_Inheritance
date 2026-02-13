@@ -208,32 +208,37 @@ contract CourtSession {
         emit NextSessionscheduled(_caseId, sId, _date);
     }
 
-    function startSession(string memory _caseId) external onlyAssignedJudge(_caseId) {
-        require(cases[_caseId].nextSessionId > 0, "No sessions scheduled");
-        uint256 sId = cases[_caseId].nextSessionId - 1;
+    /**
+     * @dev Finalize a session in a single transaction
+     * Frontend provides start/end timestamps and IPFS CID
+     */
+    function finalizeSession(
+        string memory _caseId,
+        string memory _ipfsCid,
+        bool _isAdjourned,
+        uint256 _startTimestamp,
+        uint256 _endTimestamp
+    ) external onlyAssignedJudge(_caseId) {
+        require(bytes(cases[_caseId].id).length != 0, "Case does not exist");
+        require(bytes(_ipfsCid).length > 0, "IPFS CID required");
+        require(_startTimestamp > 0, "Invalid start timestamp");
+        require(_endTimestamp > _startTimestamp, "End must be after start");
+
+        uint256 sId = cases[_caseId].nextSessionId;
+        
+        // Store the finalized session
         sessions[_caseId][sId] = CurrSession({
             caseId: _caseId,
             sessionId: sId,
-            ipfsCid: "",
-            isAdjourned: false,
-            startTimestamp: block.timestamp,
-            endTimestamp: 0
+            ipfsCid: _ipfsCid,
+            isAdjourned: _isAdjourned,
+            startTimestamp: _startTimestamp,
+            endTimestamp: _endTimestamp
         });
-    }
 
-    function endSession(
-        string memory _caseId,
-        string memory _ipfsCid,
-        bool _isAdjourned
-    ) external onlyAssignedJudge(_caseId) {
-        require(cases[_caseId].nextSessionId > 0, "No sessions");
-        uint256 sId = cases[_caseId].nextSessionId - 1;
-        CurrSession storage currentSession = sessions[_caseId][sId];
-        require(currentSession.startTimestamp != 0, "Session not started");
-
-        currentSession.ipfsCid = _ipfsCid;
-        currentSession.isAdjourned = _isAdjourned;
-        currentSession.endTimestamp = block.timestamp;
+        // Increment session ID for next session
+        cases[_caseId].nextSessionId++;
+        cases[_caseId].status = _isAdjourned ? CaseStatus.IN_SESSION : CaseStatus.CLOSED;
 
         emit SessionPublished(_caseId, sId, _ipfsCid);
     }
@@ -292,5 +297,22 @@ contract CourtSession {
         // or the last one added.
         uint256 sessionId = cases[_caseId].nextSessionId - 1;
         return nextSessions[_caseId][sessionId];
+    }
+
+    function updateNextSessionState(
+        string memory _caseId,
+        uint256 _sessionId,
+        uint256 _newDate,
+        string memory _description
+    ) external onlyAssignedJudge(_caseId) {
+        require(bytes(cases[_caseId].id).length != 0, "Case does not exist");
+        require(_sessionId < cases[_caseId].nextSessionId, "Invalid session ID");
+        
+        // Update the session details
+        SessionDetails storage session = nextSessions[_caseId][_sessionId];
+        session.scheduledDate = _newDate;
+        session.description = _description;
+        
+        emit NextSessionscheduled(_caseId, _sessionId, _newDate);
     }
 }

@@ -6,13 +6,16 @@ import {
   getEvidenceType 
 } from '../../utils/storage/ipfsUploadUtils';
 import { EvidenceUploadType } from '@/services/caseEvidenceService';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Upload, FileText, Loader2, Check, AlertCircle, Shield } from 'lucide-react';
 
 interface IpfsUploadProps {
-  caseId?: string | null; // Make optional for FIR uploads
-  userProfileId: string; // The ID from your 'profiles' table
-  evidenceType?: EvidenceUploadType; // Type of evidence (supplementary_chargesheet, etc.)
+  caseId?: string | null;
+  userProfileId: string;
+  evidenceType?: EvidenceUploadType;
   onUploadSuccess?: (cid: string, fileName: string) => void;
-  triggerUpload?: boolean; // New prop to trigger upload externally
+  triggerUpload?: boolean;
 }
 
 export const IpfsUpload = ({ 
@@ -26,15 +29,16 @@ export const IpfsUpload = ({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [cid, setCid] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Just store the file, don't upload yet
     setSelectedFile(file);
     setError(null);
     setSuccessMsg(null);
+    setCid(null);
   };
 
   const handleUpload = async () => {
@@ -45,16 +49,13 @@ export const IpfsUpload = ({
     setSuccessMsg(null);
 
     try {
-      // 1. Validate File Size (>100MB check)
       validateFile(selectedFile);
 
-      // 2. Upload to IPFS (Pinata) - pass empty string if caseId is null
-      const ipfsResult = await uploadToPinata(selectedFile, caseId || '');
+      const ipfsResult = await uploadToPinata(selectedFile, caseId as string);
+      setCid(ipfsResult.cid);
 
-      // 3. Determine File Category (VIDEO, IMAGE, etc.)
       const category = getEvidenceType(selectedFile);
 
-      // 4. Save Record to Supabase - only if caseId is provided
       if (caseId) {
         const { error: dbError } = await supabase
           .from('case_evidence')
@@ -63,16 +64,15 @@ export const IpfsUpload = ({
             cid: ipfsResult.cid,
             file_name: ipfsResult.fileName,
             category: category,
-            uploaded_by: userProfileId // Links to profiles table
+            uploaded_by: userProfileId
           });
 
         if (dbError) throw dbError;
       }
 
-      setSuccessMsg(`File uploaded successfully as ${evidenceType}!`);
+      setSuccessMsg('File uploaded successfully');
       if (onUploadSuccess) onUploadSuccess(ipfsResult.cid, ipfsResult.fileName);
       
-      // Clear file
       setSelectedFile(null);
 
     } catch (err: any) {
@@ -83,49 +83,121 @@ export const IpfsUpload = ({
     }
   };
 
-  // Trigger upload when triggerUpload prop changes to true
   useEffect(() => {
     if (triggerUpload && selectedFile) {
       handleUpload();
     }
   }, [triggerUpload, selectedFile]);
 
+  const getEvidenceTypeLabel = (type: EvidenceUploadType): string => {
+    return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
   return (
-    <div className="p-4 border rounded-lg bg-white shadow-sm">
-      <h3 className="text-lg font-bold mb-3">
-        Upload {evidenceType.replace(/_/g, ' ').toUpperCase()}
-      </h3>
+    <div className="p-6 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600">
+          <Shield className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-white">
+            Upload {getEvidenceTypeLabel(evidenceType)}
+          </h3>
+          <p className="text-slate-400 text-sm">
+            Securely store evidence on IPFS
+          </p>
+        </div>
+      </div>
       
-      <div className="flex flex-col gap-3">
-        <input 
-          type="file" 
-          onChange={handleFileChange}
-          disabled={uploading}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-md file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100
-            disabled:opacity-50 disabled:cursor-not-allowed"
-        />
+      <div className="space-y-4">
+        {/* File Input */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="w-4 h-4 text-slate-400" />
+            <span className="text-sm text-slate-300">Select File</span>
+          </div>
+          <input 
+            type="file" 
+            onChange={handleFileChange}
+            disabled={uploading}
+            className="flex-1 h-10 px-3 rounded-lg border border-white/10 bg-white/5 text-white text-sm 
+              file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium 
+              file:bg-blue-600 file:text-white hover:file:bg-blue-700
+              disabled:opacity-50 disabled:cursor-not-allowed w-full"
+          />
+        </div>
+
+        {/* Selected File Info */}
+        {selectedFile && !uploading && !successMsg && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <FileText className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-slate-300 truncate flex-1">
+              {selectedFile.name}
+            </span>
+            <span className="text-xs text-slate-500">
+              {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+            </span>
+          </div>
+        )}
+
+        {/* Upload Button */}
+        <Button
+          onClick={handleUpload}
+          disabled={uploading || !selectedFile}
+          className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Uploading to IPFS...
+            </>
+          ) : (
+            <>
+              <Upload className="w-4 h-4 mr-2" />
+              Upload to IPFS
+            </>
+          )}
+        </Button>
         
+        {/* Loading State */}
         {uploading && (
-          <p className="text-blue-600 text-sm animate-pulse">
-            Uploading to IPFS... Please wait.
-          </p>
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+            <span>Uploading to IPFS... Please wait.</span>
+          </div>
         )}
         
+        {/* Error State */}
         {error && (
-          <p className="text-red-600 text-sm bg-red-50 p-2 rounded">
-            Error: {error}
-          </p>
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
         )}
         
-        {successMsg && (
-          <p className="text-green-600 text-sm bg-green-50 p-2 rounded">
-            {successMsg}
-          </p>
+        {/* Success State */}
+        {successMsg && cid && (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <Check className="w-4 h-4 text-emerald-400 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-emerald-400 font-medium">{successMsg}</p>
+              </div>
+            </div>
+            
+            <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+              <p className="text-xs text-slate-500 mb-1">IPFS CID</p>
+              <div className="flex items-center gap-2">
+                <code className="text-xs font-mono text-indigo-400 truncate flex-1">
+                  {cid}
+                </code>
+                <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs">
+                  <Check className="w-3 h-3 mr-1" /> Stored
+                </Badge>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

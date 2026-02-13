@@ -281,6 +281,7 @@ const Courts = () => {
               className={viewMode === "grid"
                 ? "grid grid-cols-1 gap-4"
                 : "space-y-3"}
+                
             >
               {filteredCases.map((caseItem, index) => (
                 <motion.div
@@ -288,6 +289,10 @@ const Courts = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
+                  onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/cases/${caseItem.id}`);
+                            }}
                 >
                   <Card className="card-glass border-border/50 hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/10">
                     <CardContent className="p-6">

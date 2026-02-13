@@ -36,6 +36,8 @@ export const useCourtSession = (caseId: string) => {
   const [permissionRequests, setPermissionRequests] = useState<PermissionRequest[]>([]);
   const [myPermission, setMyPermission] = useState<PermissionRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBlockchainLoading, setIsBlockchainLoading] = useState(false);
+  const [blockchainError, setBlockchainError] = useState<string | null>(null);
 
   const isJudge = profile?.role_category === 'judiciary' || profile?.role_category === 'judge';
   const canUpload = myPermission?.status === 'granted' || isJudge;
@@ -91,9 +93,14 @@ export const useCourtSession = (caseId: string) => {
       return null;
     }
 
+    setIsLoading(true);
+    setIsBlockchainLoading(true);
+    setBlockchainError(null);
+
     try {
       console.log('🚀 Starting new court session for case:', caseId);
       
+      // First, create session in database
       const { data: session, error } = await supabase
         .from('session_logs')
         .insert({
@@ -108,12 +115,16 @@ export const useCourtSession = (caseId: string) => {
         .single();
 
       if (error) {
-        console.error('❌ Error creating session:', error);
+        console.error('❌ Error creating session in database:', error);
         toast.error('Failed to start court session');
         return null;
       }
 
-      console.log('✅ Session created successfully:', session);
+      console.log('✅ Database session created successfully:', session);
+
+      // Blockchain finalization happens later via judgeFinalizeSession
+      // when judge signs and session is finalized
+
       setActiveSession(session);
       toast.success('Court session started');
       return session;
@@ -121,6 +132,8 @@ export const useCourtSession = (caseId: string) => {
       console.error('❌ Error starting session:', error);
       toast.error('Failed to start court session');
       return null;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -211,6 +224,8 @@ export const useCourtSession = (caseId: string) => {
     permissionRequests,
     myPermission,
     isLoading,
+    isBlockchainLoading,
+    blockchainError,
     isJudge,
     canUpload,
     isSessionActive: !!activeSession,

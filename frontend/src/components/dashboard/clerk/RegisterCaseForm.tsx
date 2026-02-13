@@ -226,11 +226,11 @@ export const RegisterCaseForm = () => {
 
       const firIdForChain = verifiedFir ? verifiedFir.fir_number : "CIVIL-NA";
       
-      // Generate a case ID that matches the local database format
-      const generatedCaseId = `CASE-${Date.now()}`;
+      // Generate a case ID that will be used both on blockchain and in database
+      const caseId = `CASE-${Date.now()}`;
 
-      const { txHash, caseId } = await clerkCreateCase(
-        generatedCaseId,
+      const { txHash } = await clerkCreateCase(
+        caseId,
         data.title, 
         firIdForChain,
         prosecutionWallet,
@@ -319,7 +319,7 @@ export const RegisterCaseForm = () => {
         : data.description || "";
 
       const supabasePayload = {
-        case_number: `CASE-${caseId}`, 
+        case_number: caseId, 
 
         title: data.title,
         case_type: data.caseType,

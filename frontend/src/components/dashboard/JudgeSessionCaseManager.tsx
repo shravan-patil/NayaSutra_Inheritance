@@ -256,7 +256,7 @@ export function JudgeSessionCaseManager({
         const { data, error } = await supabase
           .from("profiles")
           .select("id, full_name, role_category")
-          .eq("role_category", "judiciary")
+          .eq("role_category", "judge")
           .neq("id", currentJudgeId)
           .order("full_name");
 

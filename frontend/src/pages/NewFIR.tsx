@@ -10,6 +10,7 @@ import { ethers } from "ethers";
 // --- IMPORTS ---
 import { createFIR, updateFirTxHash, getFIRByNumber } from "@/services/policeService";
 import { fileFir } from "@/utils/BlockChain_Interface/police"; 
+import { uploadToPinata, validateFile } from "@/utils/storage/ipfsUploadUtils"; 
 
 const NewFIR = () => {
   const [loading, setLoading] = useState(false);
@@ -41,16 +42,6 @@ const NewFIR = () => {
 
   const clearFile = () => setFirFile(null);
 
-  // Mock IPFS Upload (Replace with real logic later)
-  const mockUploadToPinata = async (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const dummyCid = "Qm" + ethers.keccak256(ethers.toUtf8Bytes(file.name + Date.now())).substring(2, 44);
-        resolve(dummyCid);
-      }, 1500); 
-    });
-  };
-
 const handleSubmit = async (e: any) => {
     e.preventDefault();
     if (!firFile) {
@@ -63,6 +54,9 @@ const handleSubmit = async (e: any) => {
     try {
       // --- STEP 1: PREPARATION ---
       setLoadingStep("Validating & Hashing...");
+      
+      // Validate file before upload
+      validateFile(firFile);
       
       const ipcSectionsArray = form.bns_section
         ? form.bns_section.split(',').map((s: string) => s.trim())
@@ -80,7 +74,8 @@ const handleSubmit = async (e: any) => {
 
       // --- STEP 2: IPFS UPLOAD ---
       setLoadingStep("Uploading to IPFS...");
-      const ipfsCid = await mockUploadToPinata(firFile);
+      const ipfsResult = await uploadToPinata(firFile, form.fir_number);
+      const ipfsCid = ipfsResult.cid;
       
       // --- STEP 3: BLOCKCHAIN TRANSACTION FIRST ---
       setLoadingStep("Creating blockchain entry...");
@@ -219,7 +214,7 @@ const handleSubmit = async (e: any) => {
                                     </div>
                                     <div>
                                         <p className="text-white font-medium">Click to upload FIR PDF</p>
-                                        <p className="text-slate-400 text-sm">PDF up to 10MB</p>
+                                        <p className="text-slate-400 text-sm">PDF up to 100MB</p>
                                     </div>
                                 </div>
                             ) : (

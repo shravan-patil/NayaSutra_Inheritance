@@ -5,11 +5,14 @@ import {
   Upload,
   Check,
   Send,
+  Clock,
   Loader2,
   User,
   FileText,
   AlertCircle,
   Eye,
+  Mic,
+  Scale,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +31,6 @@ import {
   type CaseDetails,
   type CaseParticipants
 } from "@/utils/BlockChain_Interface/clerk";
-
 type CaseData = {
   id: string;
   case_number: string;
@@ -50,6 +52,20 @@ type Profile = {
   wallet_address?: string;
 };
 
+type ActiveSession = {
+  id: string;
+  case_id: string;
+  judge_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  notes: string | null;
+  transcript_cid: string | null;
+  judge_verdict_cid: string | null;
+};
+
+type UploadType = 'transcript' | 'verdict' | null;
+
 interface CaseManagementPanelProps {
   caseData: CaseData;
   onCaseUpdate?: () => void;
@@ -59,6 +75,15 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
   const [activeTab, setActiveTab] = useState("documents");
   const [judges, setJudges] = useState<Profile[]>([]);
   const [lawyers, setLawyers] = useState<Profile[]>([]);
+  
+  // Active Session State
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  
+  // Session Document Upload State
+  const [uploadType, setUploadType] = useState<UploadType>(null);
+  const [selectedDocFile, setSelectedDocFile] = useState<File | null>(null);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   
   // Selection States
   const [selectedJudge, setSelectedJudge] = useState(caseData.assigned_judge_id || "");
@@ -135,7 +160,52 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
     fetchBlockchainData();
   }, [caseData.on_chain_case_id]);
 
-  // 3. IPFS Readiness Check
+  // 4. Fetch Active Session for Transcript Upload Enforcement
+  useEffect(() => {
+    const fetchActiveSession = async () => {
+      setIsLoadingSession(true);
+      try {
+        const { data, error } = await supabase
+          .from('session_logs')
+          .select('*')
+          .eq('case_id', caseData.id)
+          .eq('status', 'active')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+        setActiveSession(data as ActiveSession | null);
+      } catch (error) {
+        console.error('Error fetching active session:', error);
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+
+    fetchActiveSession();
+    
+    // Set up realtime subscription for session changes
+    const channel = supabase
+      .channel(`session-logs-${caseData.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_logs',
+          filter: `case_id=eq.${caseData.id}`
+        },
+        () => {
+          fetchActiveSession();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [caseData.id]);
   useEffect(() => {
     if (judgeSignature && lawyerASignature && lawyerBSignature) {
       setIsReadyForIPFS(true);
@@ -368,6 +438,99 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
         toast.error("IPFS Upload Failed");
     } finally {
         setIsSendingToIPFS(false);
+    }
+  };
+
+  // --- Session Document Upload Handler ---
+  const handleSessionDocUpload = async () => {
+    if (!uploadType) {
+      toast.error("Please select an upload type (Transcript or Verdict)");
+      return;
+    }
+
+    if (!selectedDocFile) {
+      toast.error("Please select a file to upload");
+      return;
+    }
+
+    // Enforce: Transcript can only be uploaded when there's an active session
+    if (uploadType === 'transcript' && !activeSession) {
+      toast.error("Transcript can only be uploaded when there is an active court session");
+      return;
+    }
+
+    setIsUploadingDoc(true);
+    try {
+      // Import the uploadToPinata function from the utils
+      const { uploadToPinata, validateFile } = await import('@/utils/storage/ipfsUploadUtils');
+      
+      // Validate file
+      validateFile(selectedDocFile);
+
+      // Upload to IPFS via Pinata
+      const ipfsResult = await uploadToPinata(selectedDocFile, caseData.id);
+      const cid = ipfsResult.cid;
+
+      // Determine which column to update based on upload type
+      const columnToUpdate = uploadType === 'transcript' ? 'transcript_cid' : 'judge_verdict_cid';
+      
+      // Determine which session to update
+      let sessionId: string;
+      
+      if (uploadType === 'transcript') {
+        // For transcript, use the active session
+        if (!activeSession) {
+          toast.error("No active session found for transcript upload");
+          return;
+        }
+        sessionId = activeSession.id;
+      } else {
+        // For verdict, find the most recent session (active, paused, or ended)
+        const { data: recentSession, error: sessionError } = await supabase
+          .from('session_logs')
+          .select('id')
+          .eq('case_id', caseData.id)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (sessionError || !recentSession) {
+          toast.error("No session found for verdict upload");
+          return;
+        }
+        sessionId = recentSession.id;
+      }
+
+      // Update the session_logs table with the CID
+      const { error: updateError } = await supabase
+        .from('session_logs')
+        .update({ [columnToUpdate]: cid })
+        .eq('id', sessionId);
+
+      if (updateError) throw updateError;
+
+      toast.success(`${uploadType === 'transcript' ? 'Transcript' : 'Judge Verdict'} uploaded successfully! CID: ${cid.slice(0, 20)}...`);
+      
+      // Reset state
+      setSelectedDocFile(null);
+      setUploadType(null);
+      
+      // Refresh active session to show updated data
+      const { data: updatedSession } = await supabase
+        .from('session_logs')
+        .select('*')
+        .eq('id', sessionId)
+        .maybeSingle();
+        
+      if (updatedSession) {
+        setActiveSession(updatedSession as ActiveSession);
+      }
+      
+    } catch (error: any) {
+      console.error('Error uploading session document:', error);
+      toast.error(error.message || "Failed to upload document");
+    } finally {
+      setIsUploadingDoc(false);
     }
   };
 
@@ -630,42 +793,16 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-3 mb-8 bg-white/5 border border-white/10 backdrop-blur-lg">
-          <TabsTrigger value="documents">
-            <Upload className="w-4 h-4 mr-1 hidden sm:inline" /> IPFS Upload
+        <TabsList className="grid grid-cols-2 mb-8 bg-white/5 border border-white/10 backdrop-blur-lg">
+          <TabsTrigger value="session-docs">
+            <Mic className="w-4 h-4 mr-1 hidden sm:inline" /> Session Docs
           </TabsTrigger>
           <TabsTrigger value="view">
             <Eye className="w-4 h-4 mr-1 hidden sm:inline" /> View Evidence
           </TabsTrigger>
-          <TabsTrigger value="signatures">
-            <Check className="w-4 h-4 mr-1 hidden sm:inline" /> Signatures
-          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="documents">
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600">
-                <Upload className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">IPFS Evidence Upload</h3>
-                <p className="text-slate-400 text-sm">Upload case evidence to IPFS storage</p>
-              </div>
-            </div>
-            
-            <IpfsUpload 
-              caseId={caseData.id}
-              userProfileId={caseData.assigned_judge_id || caseData.lawyer_party_a_id || caseData.lawyer_party_b_id || ''}
-              evidenceType="general_evidence"
-              onUploadSuccess={(cid, fileName) => {
-                toast.success(`Evidence uploaded: ${fileName}`);
-                console.log(`Evidence uploaded with CID: ${cid}`);
-              }}
-            />
-          </div>
-        </TabsContent>
-
+        {/* View Evidence - Always accessible, no blur */}
         <TabsContent value="view">
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-4">
@@ -680,41 +817,173 @@ export const CaseManagementPanel = ({ caseData, onCaseUpdate }: CaseManagementPa
             
             <EvidenceList 
               caseId={caseData.id}
-              evidenceType="all"
             />
           </div>
         </TabsContent>
 
-        <TabsContent value="signatures">
-          <SignatureSection
-            caseData={caseData}
-            judgeSignature={judgeSignature}
-            lawyerASignature={lawyerASignature}
-            lawyerBSignature={lawyerBSignature}
-          />
+        {/* Session Docs - Blurred when no active session */}
+        <TabsContent value="session-docs">
+          <div className="relative">
+            {/* Blur overlay only when no active session */}
+            {!activeSession && (
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-10 rounded-lg flex items-center justify-center">
+                <div className="text-center p-6">
+                  <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 border mb-3">
+                    <Clock className="w-3 h-3 mr-1" /> No Active Session
+                  </Badge>
+                  <p className="text-slate-300 text-sm">
+                    Waiting for judge to start a court session...
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {/* Content - blurred and non-interactive when no session */}
+            <div className={!activeSession ? "pointer-events-none opacity-50" : ""}>
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-amber-600 to-orange-600">
+                    <Scale className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Session Documents</h3>
+                    <p className="text-slate-400 text-sm">Upload court transcripts and judge verdicts to IPFS</p>
+                  </div>
+                </div>
+
+                {/* Active Session Status */}
+                <div className="p-4 rounded-lg bg-white/5 border border-white/10">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-300">Active Session Status</span>
+                    {isLoadingSession ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                    ) : activeSession ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 border">
+                        <Check className="w-3 h-3 mr-1" /> Active Session
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 border">
+                        <Clock className="w-3 h-3 mr-1" /> No Active Session
+                      </Badge>
+                    )}
+                  </div>
+                  {activeSession && (
+                    <p className="text-xs text-slate-500 mt-2">
+                      Session started: {new Date(activeSession.started_at).toLocaleString('en-IN')}
+                      {activeSession.transcript_cid && (
+                        <span className="text-emerald-400 ml-2">• Transcript uploaded</span>
+                      )}
+                      {activeSession.judge_verdict_cid && (
+                        <span className="text-emerald-400 ml-2">• Verdict uploaded</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+
+                {/* Upload Type Selector */}
+                <div className="space-y-3">
+                  <label className="text-sm text-slate-300 block">Select Document Type</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setUploadType('transcript')}
+                      disabled={!activeSession}
+                      className={`p-4 rounded-lg border text-left transition-all ${
+                        uploadType === 'transcript'
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                          : activeSession 
+                            ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                            : 'bg-white/5 border-white/10 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Mic className="w-5 h-5" />
+                        <span className="font-medium">Transcript</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Upload court session transcript (requires active session)
+                      </p>
+                    </button>
+                    <button
+                      onClick={() => setUploadType('verdict')}
+                      disabled={!activeSession}
+                      className={`p-4 rounded-lg border text-left transition-all ${
+                        uploadType === 'verdict'
+                          ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
+                          : activeSession
+                            ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                            : 'bg-white/5 border-white/10 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Gavel className="w-5 h-5" />
+                        <span className="font-medium">Judge Verdict</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Upload judge verdict document
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* File Upload Area */}
+                {uploadType && activeSession && (
+                  <div className="space-y-4 p-4 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-2 mb-3">
+                      <FileText className="w-4 h-4 text-slate-400" />
+                      <span className="text-sm text-slate-300">
+                        Select {uploadType === 'transcript' ? 'Transcript' : 'Verdict'} File
+                      </span>
+                    </div>
+
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt"
+                      onChange={(e) => setSelectedDocFile(e.target.files?.[0] || null)}
+                      className="flex-1 h-10 px-3 rounded-lg border border-white/10 bg-white/5 text-white text-sm file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-600 file:text-white hover:file:bg-blue-700 w-full"
+                      disabled={isUploadingDoc}
+                    />
+
+                    {selectedDocFile && (
+                      <p className="text-xs text-slate-400">
+                        Selected: {selectedDocFile.name} ({(selectedDocFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
+
+                    {/* Dynamic Upload Button */}
+                    <div className="flex justify-center pt-2">
+                      <Button
+                        onClick={handleSessionDocUpload}
+                        disabled={
+                          isUploadingDoc ||
+                          !selectedDocFile ||
+                          (uploadType === 'transcript' && !activeSession)
+                        }
+                        className={`font-medium px-6 py-2 rounded-lg transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                          uploadType === 'transcript'
+                            ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-amber-500/20'
+                            : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-purple-500/20'
+                        }`}
+                      >
+                        {isUploadingDoc ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Uploading to IPFS...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4 mr-2" />
+                            {uploadType === 'transcript' ? 'Upload Transcript to IPFS' : 'Upload Verdict to IPFS'}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
-
-      {/* IPFS Button */}
-      <div className="mt-8 pt-6 border-t border-white/10">
-        <Button
-          className="w-full h-12 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg shadow-green-500/20 text-white font-medium"
-          size="lg"
-          onClick={handleSendToIPFS}
-          disabled={!isReadyForIPFS || isSendingToIPFS}
-        >
-          {isSendingToIPFS ? (
-            <> <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Preparing for IPFS... </>
-          ) : (
-            <> <Send className="w-5 h-5 mr-2" /> {isReadyForIPFS ? "Send to IPFS" : "Collect All Signatures to Enable IPFS"} </>
-          )}
-        </Button>
-        {!isReadyForIPFS && (
-          <p className="text-xs text-slate-400 text-center mt-3">
-            Requires signatures from Judge and both Lawyers
-          </p>
-        )}
-      </div>
     </GlassCard>
   );
 };

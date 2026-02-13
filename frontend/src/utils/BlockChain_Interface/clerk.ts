@@ -50,7 +50,6 @@ export interface CaseParticipants {
 
 export interface CreateCaseResponse {
     txHash: string;
-    caseId: string;
 }
 
 // --- Internal Helper ---
@@ -132,8 +131,7 @@ export const clerkCreateCase = async (
     console.log(`Case Created! ID: ${newCaseId}`);
 
     return {
-        txHash: tx.hash,
-        caseId: newCaseId
+        txHash: tx.hash
     };
 };
 

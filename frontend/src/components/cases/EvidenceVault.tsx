@@ -12,7 +12,7 @@ import {
   Play,
   History,
   Clock,
-   Presentation,
+  Presentation,
   PenTool,
   CheckCircle2,
   Loader2
@@ -149,18 +149,18 @@ export const EvidenceVault = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: index * 0.05 }}
         className={cn(
-          "glass-card overflow-hidden border-2 transition-all bg-white shadow-sm rounded-xl",
+          "glass-card overflow-hidden border transition-all bg-white/5 rounded-xl",
           isSealed
             ? "border-emerald-500/30 shadow-[0_0_20px_-5px_rgba(16,185,129,0.3)]"
             : isPending
             ? "border-amber-500/30 border-dashed"
-            : "border-gray-100"
+            : "border-white/10"
         )}
       >
         {/* Preview Area */}
         <div
           onClick={() => onPreview && onPreview(ev)}
-          className="relative aspect-video bg-gray-100 cursor-pointer group overflow-hidden"
+          className="relative aspect-video bg-white/5 cursor-pointer group overflow-hidden"
         >
           {/* Media preview */}
           {(isImage || isVideo) && ev.file_url ? (
@@ -171,8 +171,8 @@ export const EvidenceVault = ({
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="p-4 rounded-full bg-white shadow-sm">
-                <FileIcon className="w-8 h-8 text-gray-400" />
+              <div className="p-4 rounded-full bg-white/10 shadow-sm">
+                <FileIcon className="w-8 h-8 text-slate-400" />
               </div>
             </div>
           )}
@@ -189,15 +189,15 @@ export const EvidenceVault = ({
           {/* Audio indicator */}
           {isAudio && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="p-4 rounded-full bg-blue-50">
-                <Music className="w-8 h-8 text-blue-500" />
+              <div className="p-4 rounded-full bg-blue-500/10">
+                <Music className="w-8 h-8 text-blue-400" />
               </div>
             </div>
           )}
 
           {/* Status badge */}
           <div className="absolute top-2 right-2">
-            <Badge variant="outline" className={cn("text-xs bg-white/90 backdrop-blur-sm", status.className)}>
+            <Badge variant="outline" className={cn("text-xs bg-black/40 backdrop-blur-sm", status.className)}>
               <StatusIcon className="w-3 h-3 mr-1" />
               {status.label}
             </Badge>
@@ -206,11 +206,11 @@ export const EvidenceVault = ({
 
         {/* Content */}
         <div className="p-4 space-y-3">
-          <h4 className="font-medium text-sm truncate text-gray-800" title={displayTitle}>
+          <h4 className="font-medium text-sm truncate text-white" title={displayTitle}>
             {displayTitle}
           </h4>
 
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-slate-400">
             {/* We don't have file_size in DB yet, so we hide or placeholder */}
             <span>ID: {ev.id.slice(0,6)}...</span> 
             <span>
@@ -224,7 +224,7 @@ export const EvidenceVault = ({
               variant="outline"
               size="sm"
               onClick={() => setHistoryModal({ isOpen: true, evidenceId: ev.id, title: displayTitle })}
-              className="flex-1 text-xs h-8"
+              className="flex-1 text-xs h-8 bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white"
             >
               <History className="w-3.5 h-3.5 mr-1" />
               History
@@ -239,7 +239,7 @@ export const EvidenceVault = ({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full text-xs h-8 border-blue-200 text-blue-600 hover:bg-blue-50"
+                className="w-full text-xs h-8 bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300"
               >
                 <FileText className="w-3.5 h-3.5 mr-1" />
                 View
@@ -255,8 +255,8 @@ export const EvidenceVault = ({
   if (loading) {
     return (
         <div className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-2"/>
-            <p className="text-sm text-gray-400">Loading your evidence vault...</p>
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-500 mb-2"/>
+            <p className="text-sm text-slate-400">Loading your evidence vault...</p>
         </div>
     );
   }
@@ -265,8 +265,8 @@ export const EvidenceVault = ({
     <div className="space-y-8 mt-8">
         {/* Header */}
         <div>
-            <h2 className="text-xl font-bold text-gray-800">Evidence Vault</h2>
-            <p className="text-sm text-gray-500">Secure storage for your staged uploads.</p>
+            <h2 className="text-xl font-bold text-white">Evidence Vault</h2>
+            <p className="text-sm text-slate-400">Secure storage for your staged uploads.</p>
         </div>
 
       {/* Sealed Evidence Section */}
@@ -274,11 +274,11 @@ export const EvidenceVault = ({
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <Shield className="w-5 h-5 text-emerald-600" />
+              <Shield className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-800">Sealed Evidence</h3>
-              <p className="text-xs text-muted-foreground">
+              <h3 className="font-semibold text-white">Sealed Evidence</h3>
+              <p className="text-xs text-slate-400">
                 {approvedEvidence.length} item(s) with judicial finality
               </p>
             </div>
@@ -294,11 +294,11 @@ export const EvidenceVault = ({
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-              <Clock className="w-5 h-5 text-amber-600" />
+              <Clock className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-800">Pending Review</h3>
-              <p className="text-xs text-muted-foreground">
+              <h3 className="font-semibold text-white">Pending Review</h3>
+              <p className="text-xs text-slate-400">
                 {pendingEvidence.length} item(s) awaiting judicial seal
               </p>
             </div>
@@ -311,23 +311,28 @@ export const EvidenceVault = ({
 
       {/* Empty state */}
       {evidenceList.length === 0 && (
-        <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
-          <Shield className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">Vault is Empty</h3>
-          <p className="text-gray-500 max-w-sm mx-auto mt-1">
+        <div className="text-center py-12 border-2 border-dashed border-white/10 rounded-xl bg-white/5">
+          <Shield className="w-12 h-12 mx-auto text-slate-500 mb-4" />
+          <h3 className="text-lg font-medium text-white">Vault is Empty</h3>
+          <p className="text-slate-400 max-w-sm mx-auto mt-1">
             You haven't uploaded any evidence for this case yet. Use the uploader above to add files.
           </p>
         </div>
       )}
 
-      {/* History Modal (simple placeholder until ChainOfCustodyModal is implemented) */}
+      {/* History Modal */}
       {historyModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h3 className="font-semibold text-lg mb-2">{historyModal.title}</h3>
-            <p className="text-sm text-muted-foreground">Detailed history for evidence <span className="font-mono">{historyModal.evidenceId}</span> is not implemented yet.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="p-6 rounded-xl bg-white/5 border border-white/10 shadow-lg w-96">
+            <h3 className="font-semibold text-lg mb-2 text-white">{historyModal.title}</h3>
+            <p className="text-sm text-slate-400">Detailed history for evidence <span className="font-mono text-indigo-400">{historyModal.evidenceId}</span> is not implemented yet.</p>
             <div className="mt-4 text-right">
-              <Button onClick={() => setHistoryModal({ isOpen: false, evidenceId: '', title: '' })}>Close</Button>
+              <Button 
+                onClick={() => setHistoryModal({ isOpen: false, evidenceId: '', title: '' })}
+                className="bg-white/10 text-white hover:bg-white/20 border border-white/10"
+              >
+                Close
+              </Button>
             </div>
           </div>
         </div>

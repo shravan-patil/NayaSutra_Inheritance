@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/layout/GlassWrapper';
+import { judgeAddProofLink } from '@/utils/BlockChain_Interface/judge';
 import { 
   FileText, 
   Image, 
@@ -157,7 +158,23 @@ export const ReviewVault: React.FC<ReviewVaultProps> = ({ caseId }) => {
       const { uploadToPinata } = await import('@/utils/storage/ipfsUploadUtils');
       const ipfsResult = await uploadToPinata(file, evidence.case_id);
 
-      // 3. Update staging_evidence status to APPROVED (using the correct enum value)
+      // 3. Add proof link to blockchain (case_number is the caseId in blockchain)
+      try {
+        toast.info('Recording proof on blockchain...');
+        const caseNumber = evidence.cases?.case_number;
+        if (caseNumber) {
+          const receipt = await judgeAddProofLink(caseNumber, ipfsResult.cid);
+          if (receipt) {
+            toast.success('Proof link recorded on blockchain');
+          }
+        }
+      } catch (blockchainError) {
+        console.error('Blockchain error:', blockchainError);
+        toast.error('IPFS upload succeeded but blockchain recording failed');
+        // Continue with database updates even if blockchain fails
+      }
+
+      // 4. Update staging_evidence status to APPROVED (using the correct enum value)
       const { error: stagingError } = await supabase
         .from('staging_evidence')
         .update({ evidence_status: 'APPROVED' })

@@ -17,6 +17,7 @@ import {
   ZoomOut,
   Upload,
 } from "lucide-react";
+import { resolveIpfsUrl } from "@/utils/storage/ipfsUploadUtils";
 import jsPDF from "jspdf";
 import {
   getFIRById,
@@ -624,8 +625,8 @@ const FIRDetails = () => {
             <Button
               onClick={() => {
                 if (fir.ipfs_cid) {
-                  // Use CID from FIR table if available
-                  window.open(`https://gateway.pinata.cloud/ipfs/${fir.ipfs_cid}`, '_blank');
+                  // Use proper IPFS gateway URL from utils
+                  window.open(resolveIpfsUrl(fir.ipfs_cid), '_blank');
                 } else {
                   setShowPdfViewer(true);
                 }
@@ -868,6 +869,7 @@ const FIRDetails = () => {
           <EvidenceUploader
             caseId={caseId}
             uploaderUuid={profile.id}
+            uploaderRole="POLICE"
             onUploadComplete={() => {
               // Optional: refresh or show success message
             }}
