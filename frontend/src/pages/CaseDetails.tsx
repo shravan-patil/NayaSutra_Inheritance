@@ -1,19 +1,39 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { useWeb3 } from "@/contexts/Web3Context";
+import { useCourtSession } from "@/hooks/useCourtSession";
+import { createSessionEndNotifications } from "@/services/notificationServiceDatabase";
+
+// --- ADDED MISSING IMPORTS ---
+import { supabase } from "@/integrations/supabase/client";// Adjust path if your supabase client is elsewhere
+import { PastSessionsList } from "@/components/cases/PastSessionsList";
+import { finalizeAndUploadSession } from "@/services/sessionFinalizationService";
+import { judgeFinalizeSession } from "@/utils/BlockChain_Interface/judge";
+
+import { SessionDetailsModal } from "@/components/cases/SessionDetailsModal";
+import { ScheduleHearingDialog } from "@/components/ScheduleHearingDialog";
+import { NotificationDetailModal } from "@/components/notifications/NotificationDetailModal";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// -----------------------------
+
+import { EvidenceUploader } from "@/components/cases/EvidenceUploader";
+import { EvidenceVault } from "@/components/cases/EvidenceVault";
+import { LawyerReviewVault } from "@/components/cases/LawyerReviewVault";
+import { PoliceReviewVault } from "@/components/cases/PoliceReviewVault";
+import { ReviewVault } from "@/components/dashboard/judge/ReviewVault";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
-  CheckCircle2,
-  Clock,
-  Eye,
-  File,
-  FileText,
-  FileText as FileTextIcon,
-  Play,
   Save,
-  Shield,
-  Square,
-  Upload,
-  Undo,
   Redo,
   Bold,
   Italic,
@@ -21,46 +41,30 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  CheckCircle2,
+  Clock,
+  Eye,
+  File,
+  FileText,
+  FileText as FileTextIcon,
+  Image,
+  Video,
+  Music,
+  Shield,
+  Lock,
+  Play,
+  Upload,
+  Users,
+  Calendar,
+  Scale,
+  Loader2,
+  Undo,
   List,
   ListOrdered,
   Printer,
   Download,
-  Users,
+  Square
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { useCourtSession } from "@/hooks/useCourtSession";
-import { toast } from "sonner";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { createSessionEndNotifications } from "@/services/notificationServiceDatabase";
-import { NotificationDetailModal } from "@/components/notifications/NotificationDetailModal";
-import { useWeb3 } from "@/contexts/Web3Context";
-import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
-import { ReviewVault } from "@/components/dashboard/judge/ReviewVault";
-import { EvidenceList } from "@/components/cases/EvidenceList";
-import { ScheduleHearingDialog } from "@/components/ScheduleHearingDialog";
-import { PastSessionsList, SessionItem } from "@/components/cases/PastSessionsList";
-import { SessionDetailsModal } from "@/components/cases/SessionDetailsModal";
-import { finalizeAndUploadSession } from "@/services/sessionFinalizationService";
-import { judgeFinalizeSession } from "@/utils/BlockChain_Interface/judge";
-
-// --- NEW IMPORTS ---
-import { EvidenceUploader } from "@/components/cases/EvidenceUploader";
-import { EvidenceVault } from "@/components/cases/EvidenceVault";
 
 // Match the actual database schema for cases table
 type DbCase = {
@@ -83,6 +87,9 @@ type DbCase = {
   unique_identifier?: string;
   on_chain_case_id?: string | null;
 };
+
+// Added missing SessionItem type definition
+type SessionItem = any; 
 
 const CaseDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -278,7 +285,7 @@ const CaseDetails = () => {
     ]
       .filter(p => p.userId)
       .map(participant => {
-        const record = participants?.find(p => p.user_id === participant.userId);
+        const record = participants?.find((p: any) => p.user_id === participant.userId);
         return {
           ...participant,
           signed: !!record?.signature,
@@ -516,6 +523,7 @@ const CaseDetails = () => {
   const isJudge = profile?.role_category === "judiciary" || profile?.role_category === "judge";
   // const isClerk = profile?.role_category === "clerk"; // Unused now
   const isLawyer = profile?.role_category === "lawyer";
+  const isPolice = profile?.role_category === "police"; // Added missing declaration
 
   // Determine default tab based on URL params and user role
   const getDefaultTab = () => {
@@ -853,61 +861,6 @@ const CaseDetails = () => {
     }
   };
 
-  const handleEvidenceUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    if (!courtSession.isSessionActive) {
-      toast.error("No active session. Start a court session first.");
-      return;
-    }
-
-    const files = e.currentTarget.files;
-    if (!files || files.length === 0) return;
-
-    if (!courtSession.canUpload && !isJudge) {
-      toast.error(
-        "You don't have permission to upload evidence in this session",
-      );
-      return;
-    }
-
-    // Validate file types
-    const allowedTypes = [
-      "pdf",
-      "doc",
-      "docx",
-      "xls",
-      "xlsx",
-      "jpg",
-      "jpeg",
-      "png",
-      "mp4",
-      "mp3",
-      "wav",
-    ];
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileExtension = file.name.split(".").pop()?.toLowerCase();
-
-      if (!fileExtension || !allowedTypes.includes(fileExtension)) {
-        toast.error(`File type not supported: ${file.name}`);
-        return;
-      }
-
-      if (file.size > 100 * 1024 * 1024) { // 100MB limit
-        toast.error(`File too large: ${file.name} (Max 100MB)`);
-        return;
-      }
-
-      // Mock file upload - in production, this would upload to storage
-      toast.success(`✅ Evidence file "${file.name}" uploaded successfully`);
-    }
-
-    // Reset file input
-    e.currentTarget.value = "";
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1118,7 +1071,7 @@ const CaseDetails = () => {
               >
                 Overview
               </TabsTrigger>
-              {isJudge && (
+              {(isJudge || isLawyer || isPolice) && (
                 <TabsTrigger
                   value="review"
                   className="data-[state=active]:bg-secondary"
@@ -1167,6 +1120,26 @@ const CaseDetails = () => {
                 <Card className="border-border/50 bg-gray-900/20">
                   <CardContent className="p-4">
                     <ReviewVault caseId={id || ""} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            {isLawyer && (
+              <TabsContent value="review">
+                <Card className="border-border/50 bg-gray-900/20">
+                  <CardContent className="p-4">
+                    <LawyerReviewVault />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            {isPolice && (
+              <TabsContent value="review">
+                <Card className="border-border/50 bg-gray-900/20">
+                  <CardContent className="p-4">
+                    <PoliceReviewVault />
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -1489,7 +1462,7 @@ const CaseDetails = () => {
           {caseData?.id && (
             <PastSessionsList
               caseId={caseData.id}
-              onSessionClick={(session) => {
+              onSessionClick={(session: any) => {
                 setSelectedSession(session);
                 setShowSessionDetailsModal(true);
               }}
@@ -1514,7 +1487,7 @@ const CaseDetails = () => {
         onOpenChange={setScheduleDialogOpen}
         caseId={id || ""}
         onChainCaseId={caseData?.on_chain_case_id || caseData?.case_number || ""}
-        caseNumber={caseData.case_number}
+        caseNumber={caseData?.case_number}
         onSuccess={() => {
           toast.success("Hearing scheduled successfully");
         }}

@@ -28,7 +28,7 @@ import Sections from "./pages/Sections";
 import CaseDetails  from "./pages/CaseDetails";
 import CauseList from "./pages/CauseList";
 import JudgmentWriter from "./pages/JudgmentWriter";
-import EvidenceVault from "./pages/EvidenceVault";
+import { EvidenceVault } from "./components/cases/EvidenceVault";
 import CourtCalendar from "./pages/CourtCalendar";
 import NotFound from "./pages/NotFound";
 import NewFIR from "./pages/NewFIR";
@@ -113,7 +113,7 @@ const routes: RouteObject[] = [
       { path: "/dashboard", element: <Dashboard /> },
       { path: "/cause-list", element: <CauseList /> },
       { path: "/judgment-writer", element: <JudgmentWriter /> },
-      { path: "/evidence-vault", element: <EvidenceVault /> },
+      { path: "/evidence-vault", element: <EvidenceVault caseId="" currentUserId="" /> },
       { path: "/court-calendar", element: <CourtCalendar /> },
       { path: "/courts", element: <Courts /> },
       { path: "/courts/:courtId/sections", element: <Sections /> },

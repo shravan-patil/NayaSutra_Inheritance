@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { supabase } from '@/integrations/supabase/client'; // Make sure this path is correct
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { LawyerReviewVault } from './LawyerReviewVault';
+import { PoliceReviewVault } from './PoliceReviewVault';
+import { ReviewVault } from '../dashboard/judge/ReviewVault';
+import { EvidenceList } from './EvidenceList';
 import {
   FileText,
   Video,
@@ -20,7 +25,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-
 
 // --- Types ---
 // This matches your Supabase 'Staging_Evidence' table structure
@@ -90,6 +94,7 @@ export const EvidenceVault = ({
   onPreview,
   viewMode = 'personal',
 }: EvidenceVaultProps) => {
+  const { profile } = useAuth();
   const [evidenceList, setEvidenceList] = useState<StagingEvidenceItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -99,6 +104,22 @@ export const EvidenceVault = ({
     evidenceId: "",
     title: "",
   });
+
+  // Role-based rendering
+  if (profile?.role_category === 'judiciary') {
+    return <ReviewVault caseId={caseId} />;
+  }
+
+  if (profile?.role_category === 'legal_practitioner') {
+    return <LawyerReviewVault />;
+  }
+
+  if (profile?.role_category === 'public_party' && profile?.full_name?.toLowerCase().includes('police')) {
+    return <PoliceReviewVault />;
+  }
+
+  // For other roles or fallback, show IPFS Evidence Vault
+  return <EvidenceList caseId={caseId} title="Evidence Vault" />;
 
   // --- Fetch Data from Supabase ---
   useEffect(() => {
